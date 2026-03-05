@@ -1,0 +1,199 @@
+
+export interface StudentUser {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  suffix?: string;
+  email: string;
+  course: string;
+  yearLevel: string;
+  section: string;
+  gender: "Male" | "Female";
+  role: "student" | "admin";
+  password?: string;
+  phone?: string;
+  birthday?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  zipCode?: string;
+  semester?: string;
+  schoolYear?: string;
+  enrollmentStatus?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  guardianRelation?: string;
+}
+
+const SESSION_KEY = "attendwise_session";
+const MIGRATED_KEY = "attendwise_migrated_v1";
+
+// --- Auth & Session (Keep in localStorage for UX) ---
+export const setSession = (user: StudentUser | null) => {
+  if (user) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(SESSION_KEY);
+  }
+};
+
+export const getSession = (): StudentUser | null => {
+  const session = localStorage.getItem(SESSION_KEY);
+  return session ? JSON.parse(session) : null;
+};
+
+// --- Backend API Integration ---
+
+export const loginUser = async (loginId: string, password: string, role: string): Promise<StudentUser | null> => {
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ loginId, password, role })
+  });
+  if (!res.ok) return null;
+  const user = await res.json();
+  setSession(user);
+  return user;
+};
+
+export const getAllStudents = async (): Promise<StudentUser[]> => {
+  const res = await fetch('/api/students');
+  return res.ok ? await res.json() : [];
+};
+
+export const getStudentProfile = async (id: string): Promise<StudentUser | null> => {
+  const res = await fetch(`/api/students/${id}`);
+  return res.ok ? await res.json() : null;
+};
+
+export const saveUser = async (user: StudentUser) => {
+  const res = await fetch('/api/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(user)
+  });
+  return res.ok;
+};
+
+export const updateStudent = async (id: string, user: StudentUser) => {
+  const res = await fetch(`/api/students/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(user)
+  });
+  return res.ok;
+};
+
+export const deleteUser = async (studentId: string) => {
+  const res = await fetch(`/api/students/${studentId}`, {
+    method: 'DELETE'
+  });
+  return res.ok;
+};
+
+// --- Sections ---
+
+export const getCourseSections = async (): Promise<Record<string, Record<string, string[]>>> => {
+  const res = await fetch('/api/sections');
+  return res.ok ? await res.json() : {};
+};
+
+export const saveCourseSections = async (sections: Record<string, Record<string, string[]>>) => {
+  const res = await fetch('/api/sections/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sections)
+  });
+  return res.ok;
+};
+
+export const saveSection = async (course: string, year: string, section: string) => {
+  const res = await fetch('/api/sections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ course, year, section })
+  });
+  return res.ok;
+};
+
+export const deleteSection = async (course: string, year: string, section: string) => {
+  const res = await fetch('/api/sections', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ course, year, section })
+  });
+  return res.ok;
+};
+
+export const renameSectionItem = async (oldName: string, newName: string, type: 'course' | 'section', course?: string, year?: string) => {
+  const res = await fetch('/api/sections/rename', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ oldName, newName, type, course, year })
+  });
+  return res.ok;
+};
+
+// --- Attendance ---
+
+export interface AttendanceRecord {
+  id: string; // studentId
+  name: string;
+  course: string;
+  section: string;
+  time: string;
+  status: "Present" | "Late";
+  gender: "Male" | "Female";
+  eventId: string;
+  eventName: string;
+  timestamp: number;
+}
+
+export const getAttendanceRecords = async (): Promise<AttendanceRecord[]> => {
+  const res = await fetch('/api/attendance');
+  return res.ok ? await res.json() : [];
+};
+
+export const saveAttendanceRecord = async (record: AttendanceRecord) => {
+  const res = await fetch('/api/attendance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record)
+  });
+  return res.ok;
+};
+
+export const clearAttendanceRecords = async () => {
+  const res = await fetch('/api/attendance/clear', {
+    method: 'DELETE'
+  });
+  return res.ok;
+};
+
+// --- One-time Migration logic ---
+export const migrateLocalStorageToServer = async () => {
+  if (localStorage.getItem(MIGRATED_KEY)) return;
+
+  const users = JSON.parse(localStorage.getItem("attendwise_users") || "[]");
+  const sections = JSON.parse(localStorage.getItem("attendwise_sections") || "null");
+  const events = JSON.parse(localStorage.getItem("attendwise_events") || "[]");
+  const attendance = JSON.parse(localStorage.getItem("attendwise_attendance") || "[]");
+
+  if (users.length === 0 && !sections && events.length === 0 && attendance.length === 0) {
+    localStorage.setItem(MIGRATED_KEY, "true");
+    return;
+  }
+
+  console.log("Migrating data to server...");
+  const res = await fetch('/api/migrate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ users, sections, events, attendance })
+  });
+
+  if (res.ok) {
+    localStorage.setItem(MIGRATED_KEY, "true");
+    console.log("Migration successful!");
+  }
+};
