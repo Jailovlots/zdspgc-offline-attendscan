@@ -45,6 +45,15 @@ export const initDb = async () => {
         password TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS admins (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        role TEXT NOT NULL DEFAULT 'officer',
+        password TEXT NOT NULL,
+        createdat TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS sections (
         id SERIAL PRIMARY KEY,
         course TEXT NOT NULL,

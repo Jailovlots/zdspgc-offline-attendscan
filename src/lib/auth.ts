@@ -76,19 +76,62 @@ export const saveUser = async (user: StudentUser) => {
   return res.ok;
 };
 
-export const updateStudent = async (id: string, user: StudentUser) => {
+export const updateStudent = async (id: string, user: StudentUser): Promise<{ ok: boolean; error?: string }> => {
   const res = await fetch(`/api/students/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(user)
   });
-  return res.ok;
+  if (res.ok) return { ok: true };
+  const body = await res.json().catch(() => ({}));
+  return { ok: false, error: body?.error || 'Update failed' };
 };
 
 export const deleteUser = async (studentId: string) => {
   const res = await fetch(`/api/students/${studentId}`, {
     method: 'DELETE'
   });
+  return res.ok;
+};
+
+// --- Admin/Officer Accounts ---
+
+export interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  role: 'officer' | 'superadmin';
+  password: string;
+  createdAt: string;
+}
+
+export const getAllAdmins = async (): Promise<AdminUser[]> => {
+  const res = await fetch('/api/admins');
+  return res.ok ? await res.json() : [];
+};
+
+export const createAdmin = async (admin: Omit<AdminUser, 'id' | 'createdAt'>): Promise<{ ok: boolean; data?: AdminUser; error?: string }> => {
+  const res = await fetch('/api/admins', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(admin)
+  });
+  const body = await res.json().catch(() => ({}));
+  return res.ok ? { ok: true, data: body } : { ok: false, error: body?.error || 'Failed to create officer' };
+};
+
+export const updateAdmin = async (id: number, admin: Partial<AdminUser>): Promise<{ ok: boolean; error?: string }> => {
+  const res = await fetch(`/api/admins/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(admin)
+  });
+  const body = await res.json().catch(() => ({}));
+  return res.ok ? { ok: true } : { ok: false, error: body?.error || 'Failed to update officer' };
+};
+
+export const deleteAdmin = async (id: number): Promise<boolean> => {
+  const res = await fetch(`/api/admins/${id}`, { method: 'DELETE' });
   return res.ok;
 };
 

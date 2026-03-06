@@ -15,6 +15,8 @@ import AdminScanner from "./pages/AdminScanner";
 import AdminStudents from "./pages/AdminStudents";
 import AdminEvents from "./pages/AdminEvents";
 import AdminSections from "./pages/AdminSections";
+import AdminSettings from "./pages/AdminSettings";
+import AdminReports from "./pages/AdminReports";
 import NotFound from "./pages/NotFound";
 
 import { useEffect } from "react";
@@ -46,6 +48,8 @@ const App = () => {
             <Route path="/admin/students" element={<AdminStudents />} />
             <Route path="/admin/events" element={<AdminEvents />} />
             <Route path="/admin/sections" element={<AdminSections />} />
+            <Route path="/admin/settings" element={<AdminSettings />} />
+            <Route path="/admin/reports" element={<AdminReports />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -78,9 +78,9 @@ const AdminStudents = () => {
     const filteredStudents = useMemo(() => {
         return students.filter((s) => {
             const matchesSearch =
-                s.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                s.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                s.studentId.includes(searchQuery);
+                (s.firstName ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (s.lastName ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (s.studentId ?? "").includes(searchQuery);
             const matchesCourse = courseFilter === "all" || s.course === courseFilter;
             return matchesSearch && matchesCourse;
         });
@@ -131,19 +131,26 @@ const AdminStudents = () => {
 
         setIsSaving(true);
         try {
-            let success = false;
             if (isEditMode && editingStudent) {
-                success = await updateStudent(editingStudent.studentId, formData as StudentUser);
+                // Merge original student data with updated formData so no fields are lost
+                const merged: StudentUser = { ...editingStudent, ...formData } as StudentUser;
+                const result = await updateStudent(editingStudent.studentId, merged);
+                if (result.ok) {
+                    await loadStudents();
+                    setIsAddDialogOpen(false);
+                    toast.success("Student updated successfully");
+                } else {
+                    toast.error(result.error || "Failed to update student");
+                }
             } else {
-                success = await saveUser(formData as StudentUser);
-            }
-
-            if (success) {
-                await loadStudents();
-                setIsAddDialogOpen(false);
-                toast.success(isEditMode ? "Student updated successfully" : "Student added successfully");
-            } else {
-                toast.error(isEditMode ? "Failed to update student" : "Failed to add student (ID may exist)");
+                const success = await saveUser(formData as StudentUser);
+                if (success) {
+                    await loadStudents();
+                    setIsAddDialogOpen(false);
+                    toast.success("Student added successfully");
+                } else {
+                    toast.error("Failed to add student (ID may already exist)");
+                }
             }
         } catch (err) {
             toast.error("Operation failed. Try again.");
@@ -282,7 +289,7 @@ const AdminStudents = () => {
                         <DialogTitle>{isEditMode ? "Edit Student Details" : "Add New Student"}</DialogTitle>
                         <DialogDescription>
                             {isEditMode
-                                ? "Update information for this student record."
+                                ? "Update information for this student record. Changing the Student ID will reassign all attendance records."
                                 : "Enter the details to create a new student record."}
                         </DialogDescription>
                     </DialogHeader>
@@ -295,7 +302,6 @@ const AdminStudents = () => {
                                     value={formData.studentId}
                                     onChange={(e) => updateForm("studentId", e.target.value)}
                                     placeholder="2024-00001"
-                                    disabled={isEditMode}
                                     required
                                 />
                             </div>

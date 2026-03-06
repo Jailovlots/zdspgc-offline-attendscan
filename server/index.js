@@ -14,22 +14,83 @@ app.use(express.json());
 // Initialize Database before starting server
 initDb();
 
+// PostgreSQL lowercases all unquoted column names (firstName → firstname).
+// This mapper converts the raw DB row back to the camelCase shape the frontend expects.
+const mapUser = (row) => ({
+  studentId: row.studentid ?? row.studentId,
+  firstName: row.firstname ?? row.firstName,
+  lastName: row.lastname ?? row.lastName,
+  middleName: row.middlename ?? row.middleName ?? '',
+  suffix: row.suffix ?? '',
+  email: row.email ?? '',
+  course: row.course ?? '',
+  yearLevel: row.yearlevel ?? row.yearLevel ?? '',
+  section: row.section ?? '',
+  gender: row.gender ?? '',
+  phone: row.phone ?? '',
+  birthday: row.birthday ?? '',
+  address: row.address ?? '',
+  city: row.city ?? '',
+  province: row.province ?? '',
+  zipCode: row.zipcode ?? row.zipCode ?? '',
+  semester: row.semester ?? '',
+  schoolYear: row.schoolyear ?? row.schoolYear ?? '',
+  enrollmentStatus: row.enrollmentstatus ?? row.enrollmentStatus ?? '',
+  guardianName: row.guardianname ?? row.guardianName ?? '',
+  guardianPhone: row.guardianphone ?? row.guardianPhone ?? '',
+  guardianRelation: row.guardianrelation ?? row.guardianRelation ?? '',
+  role: row.role ?? 'student',
+  password: row.password ?? '',
+});
+
+const mapAdmin = (row) => ({
+  id: row.id,
+  name: row.name ?? '',
+  email: row.email ?? '',
+  role: row.role ?? 'officer',
+  password: row.password ?? '',
+  createdAt: row.createdat ?? row.createdAt ?? '',
+});
+
 // --- Auth Routes ---
 app.post('/api/login', async (req, res) => {
   const { loginId, password, role } = req.body;
-  let userResult;
 
   try {
     if (role === 'admin') {
-      userResult = await db.query('SELECT * FROM users WHERE email = $1 AND password = $2 AND role = $3', [loginId, password, 'admin']);
+      // Check dedicated admins table first
+      const adminResult = await db.query(
+        'SELECT * FROM admins WHERE email = $1 AND password = $2',
+        [loginId, password]
+      );
+      if (adminResult.rows.length > 0) {
+        const admin = mapAdmin(adminResult.rows[0]);
+        // Shape it so the frontend session works (role = 'admin')
+        return res.json({
+          studentId: `ADM-${admin.id}`,
+          firstName: admin.name.split(' ')[0] || admin.name,
+          lastName: admin.name.split(' ').slice(1).join(' ') || '',
+          email: admin.email,
+          role: 'admin',
+          adminRole: admin.role,
+          adminId: admin.id,
+          course: 'N/A', yearLevel: 'N/A', section: 'N/A', gender: 'Male',
+        });
+      }
+      // Fallback: check users table with role=admin (backward compat)
+      const userResult = await db.query(
+        'SELECT * FROM users WHERE email = $1 AND password = $2 AND role = $3',
+        [loginId, password, 'admin']
+      );
+      if (userResult.rows.length > 0) return res.json(mapUser(userResult.rows[0]));
+      return res.status(401).json({ error: 'Invalid admin credentials' });
     } else {
-      userResult = await db.query('SELECT * FROM users WHERE email = $1 AND password = $2 AND role = $3', [loginId, password, 'student']);
-    }
-
-    if (userResult.rows.length > 0) {
-      res.json(userResult.rows[0]);
-    } else {
-      res.status(401).json({ error: 'Invalid credentials or role mismatch' });
+      const userResult = await db.query(
+        'SELECT * FROM users WHERE email = $1 AND password = $2 AND role = $3',
+        [loginId, password, 'student']
+      );
+      if (userResult.rows.length > 0) return res.json(mapUser(userResult.rows[0]));
+      return res.status(401).json({ error: 'Invalid credentials or role mismatch' });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -69,7 +130,7 @@ app.post('/api/register', async (req, res) => {
 app.get('/api/students', async (req, res) => {
   try {
     const studentsResult = await db.query('SELECT * FROM users WHERE role = $1', ['student']);
-    res.json(studentsResult.rows);
+    res.json(studentsResult.rows.map(mapUser));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -78,9 +139,9 @@ app.get('/api/students', async (req, res) => {
 app.get('/api/students/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const userResult = await db.query('SELECT * FROM users WHERE studentId = $1', [id]);
+    const userResult = await db.query('SELECT * FROM users WHERE studentid = $1', [id]);
     if (userResult.rows.length > 0) {
-      res.json(userResult.rows[0]);
+      res.json(mapUser(userResult.rows[0]));
     } else {
       res.status(404).json({ error: 'User not found' });
     }
@@ -90,33 +151,109 @@ app.get('/api/students/:id', async (req, res) => {
 });
 
 app.put('/api/students/:id', async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params;   // original studentId
   const u = req.body;
+  const newId = u.studentId || id;  // new studentId (may be same or different)
+
+  const client = await db.connect();
   try {
-    await db.query(`
-      UPDATE users SET 
-        firstName = $1, lastName = $2, middleName = $3, suffix = $4, email = $5,
-        course = $6, yearLevel = $7, section = $8, gender = $9, phone = $10, 
-        birthday = $11, address = $12, city = $13, province = $14, zipCode = $15, 
-        semester = $16, schoolYear = $17, enrollmentStatus = $18, guardianName = $19, 
-        guardianPhone = $20, guardianRelation = $21, password = $22
-      WHERE studentId = $23
+    await client.query('BEGIN');
+
+    // If the studentId is changing, handle FK constraints first
+    if (newId !== id) {
+      // Check the new ID isn't already taken by another student
+      const conflict = await client.query('SELECT 1 FROM users WHERE studentid = $1', [newId]);
+      if (conflict.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Student ID "${newId}" is already in use.` });
+      }
+      // Reassign attendance records to the new ID before updating PK
+      await client.query('UPDATE attendance SET studentid = $1 WHERE studentid = $2', [newId, id]);
+    }
+
+    // Update the student record (including the PK if it changed)
+    await client.query(`
+      UPDATE users SET
+        studentid = $1,
+        firstname = $2, lastname = $3, middlename = $4, suffix = $5, email = $6,
+        course = $7, yearlevel = $8, section = $9, gender = $10, phone = $11,
+        birthday = $12, address = $13, city = $14, province = $15, zipcode = $16,
+        semester = $17, schoolyear = $18, enrollmentstatus = $19, guardianname = $20,
+        guardianphone = $21, guardianrelation = $22, password = $23
+      WHERE studentid = $24
     `, [
+      newId,
       u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
       u.course, u.yearLevel, u.section, u.gender, u.phone || '',
       u.birthday || '', u.address || '', u.city || '', u.province || '', u.zipCode || '',
       u.semester || '', u.schoolYear || '', u.enrollmentStatus || '', u.guardianName || '',
-      u.guardianPhone || '', u.guardianRelation || '', u.password, id
+      u.guardianPhone || '', u.guardianRelation || '', u.password,
+      id
     ]);
+
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
 app.delete('/api/students/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM users WHERE studentId = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Admin/Officer Account Routes ---
+app.get('/api/admins', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM admins ORDER BY id ASC');
+    res.json(result.rows.map(mapAdmin));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admins', async (req, res) => {
+  const { name, email, role, password } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required.' });
+  try {
+    const result = await db.query(
+      'INSERT INTO admins (name, email, role, password, createdat) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [name, email, role || 'officer', password, new Date().toISOString()]
+    );
+    res.json(mapAdmin(result.rows[0]));
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'An account with this email already exists.' });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/admins/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, email, role, password } = req.body;
+  try {
+    const result = await db.query(
+      'UPDATE admins SET name = $1, email = $2, role = $3, password = $4 WHERE id = $5 RETURNING *',
+      [name, email, role || 'officer', password, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Officer not found.' });
+    res.json(mapAdmin(result.rows[0]));
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'An account with this email already exists.' });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admins/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM admins WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

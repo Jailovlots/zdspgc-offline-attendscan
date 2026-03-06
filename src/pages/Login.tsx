@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import zdspgcLogo from "@/assets/zdspgc-logo.png";
-import { loginUser, setSession, StudentUser } from "@/lib/auth";
+import { loginUser } from "@/lib/auth";
 
 const Login = () => {
   const [loginId, setLoginId] = useState("");
@@ -27,27 +27,11 @@ const Login = () => {
       if (user && user.role === role) {
         toast({ title: "Login successful!", description: `Welcome back, ${user.firstName}!` });
         navigate(role === "admin" ? "/admin" : "/student");
-      } else if (role === "admin" && loginId === "admin@zdspgc.edu.ph" && password === "admin") {
-        // Dev-only bypass for initial admin setup
-        const adminUser: StudentUser = {
-          studentId: "ADMIN-001",
-          firstName: "Admin",
-          lastName: "User",
-          email: "admin@zdspgc.edu.ph",
-          course: "N/A",
-          yearLevel: "N/A",
-          section: "N/A",
-          gender: "Male" as const,
-          role: "admin"
-        };
-        setSession(adminUser);
-        toast({ title: "Admin Bypass Used", description: "Default admin account logged in." });
-        navigate("/admin");
       } else {
-        toast({ 
-          title: "Login failed", 
-          description: user ? "Incorrect role selected." : "Invalid Email or password.", 
-          variant: "destructive" 
+        toast({
+          title: "Login failed",
+          description: user ? "Incorrect role selected." : "Invalid Email or password.",
+          variant: "destructive"
         });
       }
     } catch (error) {
