@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "zdspgcattendscan1963a225main",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -15,6 +15,7 @@
       }
     },
     "android": {
+      "package": "com.jaicute.zdspgc_attend_scan",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -51,7 +52,15 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ffc30b33-51f3-4d93-b766-0047c0db988c"
+      }
     }
   }
 }
