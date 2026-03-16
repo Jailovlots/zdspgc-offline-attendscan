@@ -6,13 +6,20 @@ dotenv.config();
 
 // Assuming postgres is running locally on default port 5432
 // We use the database name "scanner_db" as requested by the user
-const db = new Pool({
-  user: process.env.PGUSER || 'postgres',
-  host: process.env.PGHOST || 'localhost',
-  database: process.env.PGDATABASE || 'scanner_db',
-  password: process.env.PGPASSWORD || 'hadzmie0104',
-  port: process.env.PGPORT || 5432,
-});
+const db = new Pool(
+  process.env.DATABASE_URL
+    ? { 
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      }
+    : {
+        user: process.env.PGUSER || 'postgres',
+        host: process.env.PGHOST || 'localhost',
+        database: process.env.PGDATABASE || 'scanner_db',
+        password: process.env.PGPASSWORD || 'hadzmie0104',
+        port: process.env.PGPORT || 5432,
+      }
+);
 
 // Initialize database schema
 export const initDb = async () => {
