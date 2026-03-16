@@ -561,7 +561,7 @@ app.post('/api/migrate', async (req, res) => {
   }
 });
 
-app.get('/:path', (req, res) => {
+app.get('/:path*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
