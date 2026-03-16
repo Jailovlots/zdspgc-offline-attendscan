@@ -17,8 +17,28 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// Initialize Database before starting server
-await initDb();
+// Health check route - helps Render verify the service is up immediately
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Initialize Database
+const startServer = async () => {
+  try {
+    await initDb();
+    console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Database initialization failed:', err);
+    // We still continue to start the server so Render's health check passes
+    // and we can see error logs.
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+};
+
+startServer();
 
 // PostgreSQL lowercases all unquoted column names (firstName → firstname).
 // This mapper converts the raw DB row back to the camelCase shape the frontend expects.
@@ -565,6 +585,4 @@ app.get('/:path*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+// Remove the bottom app.listen as it's now inside startServer

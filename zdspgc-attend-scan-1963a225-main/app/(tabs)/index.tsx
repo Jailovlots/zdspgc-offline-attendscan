@@ -18,7 +18,7 @@ export default function HomeScreen() {
     checkPermissions();
   }, [permission, requestPermission]);
 
-  const targetUri = 'https://zspgc-attend-scan-1963a225-main-2.onrender.com';
+  const targetUri = '';
 
   const onBarcodeScanned = (result: BarcodeScanningResult) => {
     if (useNativeScanner && webViewRef.current) {
@@ -72,8 +72,8 @@ export default function HomeScreen() {
           />
           <View style={styles.overlay}>
             <Text style={styles.overlayText}>Align QR Code within the frame</Text>
-            <TouchableOpacity 
-              style={[styles.button, styles.cancelButton]} 
+            <TouchableOpacity
+              style={[styles.button, styles.cancelButton]}
               onPress={() => setUseNativeScanner(false)}
             >
               <Text style={styles.buttonText}>Cancel Native Scan</Text>
@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 20,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: {width: -1, height: 1},
+    textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 10
   },
   button: {
