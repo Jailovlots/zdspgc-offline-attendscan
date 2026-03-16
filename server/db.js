@@ -33,6 +33,7 @@ const db = new Pool(poolConfig);
 // Initialize database schema
 export const initDb = async () => {
   try {
+    // 1. Initial table creation for users
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         studentid TEXT PRIMARY KEY,
@@ -60,7 +61,18 @@ export const initDb = async () => {
         role TEXT NOT NULL DEFAULT 'student',
         password TEXT NOT NULL
       );
+    `);
 
+    // 2. Migration: Ensure studentid is lowercase if it was created as studentId (quoted)
+    try {
+      await db.query('ALTER TABLE users RENAME COLUMN "studentId" TO studentid');
+      console.log('Migrated users table column "studentId" to "studentid"');
+    } catch (e) {
+      // Ignore if column doesn't exist or already lowercase
+    }
+
+    // 3. Create other tables
+    await db.query(`
       CREATE TABLE IF NOT EXISTS admins (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -69,7 +81,9 @@ export const initDb = async () => {
         password TEXT NOT NULL,
         createdat TEXT NOT NULL
       );
+    `);
 
+    await db.query(`
       CREATE TABLE IF NOT EXISTS sections (
         id SERIAL PRIMARY KEY,
         course TEXT NOT NULL,
@@ -77,7 +91,9 @@ export const initDb = async () => {
         section TEXT NOT NULL,
         UNIQUE(course, year, section)
       );
+    `);
 
+    await db.query(`
       CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -86,10 +102,12 @@ export const initDb = async () => {
         location TEXT NOT NULL,
         description TEXT,
         category TEXT NOT NULL,
-        targetcourses TEXT, -- JSON string array
+        targetcourses TEXT,
         status TEXT NOT NULL
       );
+    `);
 
+    await db.query(`
       CREATE TABLE IF NOT EXISTS attendance (
         id SERIAL PRIMARY KEY,
         studentid TEXT NOT NULL,
@@ -104,7 +122,9 @@ export const initDb = async () => {
         timestamp BIGINT NOT NULL,
         FOREIGN KEY(studentid) REFERENCES users(studentid)
       );
+    `);
 
+    await db.query(`
       CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY DEFAULT 1,
         schoolname TEXT NOT NULL,
