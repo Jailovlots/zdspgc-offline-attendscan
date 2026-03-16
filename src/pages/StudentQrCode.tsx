@@ -207,10 +207,11 @@ const StudentQrCode = () => {
                       <div className="bg-card p-5 rounded-2xl border-2 border-gold/30 shadow-md relative">
                         <QRCodeSVG
                           value={currentToken.token}
-                          size={200}
-                          bgColor="transparent"
-                          fgColor="hsl(220, 70%, 18%)"
+                          size={280}
+                          bgColor="#FFFFFF"
+                          fgColor="#000000"
                           level="H"
+                          includeMargin={true}
                         />
                         <div className="absolute -top-3 -right-3 h-10 w-10 rounded-full bg-gold text-gold-foreground flex items-center justify-center font-bold text-sm shadow-lg border-2 border-white">
                           {countdown}s

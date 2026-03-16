@@ -88,10 +88,31 @@ export const initDb = async () => {
         timestamp BIGINT NOT NULL,
         FOREIGN KEY(studentId) REFERENCES users(studentId)
       );
+
+      CREATE TABLE IF NOT EXISTS settings (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        schoolName TEXT NOT NULL,
+        academicYear TEXT NOT NULL,
+        semester TEXT NOT NULL,
+        lateThreshold TEXT NOT NULL,
+        CONSTRAINT one_row CHECK (id = 1)
+      );
     `);
+
+    // Initialize default settings if missing
+    const settingsCheck = await db.query('SELECT 1 FROM settings WHERE id = 1');
+    if (settingsCheck.rows.length === 0) {
+      await db.query(`
+        INSERT INTO settings (id, schoolName, academicYear, semester, lateThreshold)
+        VALUES (1, 'Zamboanga del Sur Provincial Government College', '2024-2025', '2nd', '08:30')
+      `);
+      console.log('Default system settings initialized');
+    }
+
     console.log('PostgreSQL Database schema initialized');
   } catch (err) {
     console.error('Error initializing database schema:', err);
+    throw err;
   }
 };
 

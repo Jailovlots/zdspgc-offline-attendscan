@@ -6,13 +6,13 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 app.use(cors());
 app.use(express.json());
 
 // Initialize Database before starting server
-initDb();
+await initDb();
 
 // PostgreSQL lowercases all unquoted column names (firstName → firstname).
 // This mapper converts the raw DB row back to the camelCase shape the frontend expects.
@@ -50,6 +50,27 @@ const mapAdmin = (row) => ({
   role: row.role ?? 'officer',
   password: row.password ?? '',
   createdAt: row.createdat ?? row.createdAt ?? '',
+});
+
+const mapAttendance = (row) => ({
+  id: row.id,
+  studentId: row.studentid ?? row.studentId,
+  name: row.name ?? '',
+  course: row.course ?? '',
+  section: row.section ?? '',
+  gender: row.gender ?? '',
+  time: row.time ?? '',
+  status: row.status ?? 'Present',
+  eventId: row.eventid ?? row.eventId ?? '',
+  eventName: row.eventname ?? row.eventName ?? '',
+  timestamp: row.timestamp ? parseInt(row.timestamp, 10) : Date.now(),
+});
+
+const mapSettings = (row) => ({
+  schoolName: row.schoolname ?? row.schoolName,
+  academicYear: row.academicyear ?? row.academicYear,
+  semester: row.semester,
+  lateThreshold: row.latethreshold ?? row.lateThreshold,
 });
 
 // --- Auth Routes ---
@@ -384,7 +405,7 @@ app.delete('/api/events/:id', async (req, res) => {
 app.get('/api/attendance', async (req, res) => {
   try {
     const recordsResult = await db.query('SELECT * FROM attendance ORDER BY timestamp DESC');
-    res.json(recordsResult.rows);
+    res.json(recordsResult.rows.map(mapAttendance));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -393,11 +414,12 @@ app.get('/api/attendance', async (req, res) => {
 app.post('/api/attendance', async (req, res) => {
   const r = req.body;
   try {
-    await db.query(`
+    const result = await db.query(`
       INSERT INTO attendance (studentId, name, course, section, gender, time, status, eventId, eventName, timestamp)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    `, [r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
-    res.json({ success: true });
+      RETURNING *
+    `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
+    res.json(mapAttendance(result.rows[0]));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -405,10 +427,56 @@ app.post('/api/attendance', async (req, res) => {
 
 app.delete('/api/attendance/clear', async (req, res) => {
   try {
-    await db.query('DELETE FROM attendance');
+    await db.query('TRUNCATE attendance RESTART IDENTITY');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/attendance/bulk', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'IDs must be a non-empty array' });
+  }
+
+  try {
+    await db.query('DELETE FROM attendance WHERE id = ANY($1)', [ids]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Settings Routes ---
+app.get('/api/settings', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM settings WHERE id = 1');
+    if (result.rows.length > 0) {
+      res.json(mapSettings(result.rows[0]));
+    } else {
+      res.status(404).json({ error: 'Settings not found' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  const s = req.body;
+  try {
+    await db.query(`
+      INSERT INTO settings (id, schoolname, academicyear, semester, latethreshold)
+      VALUES (1, $1, $2, $3, $4)
+      ON CONFLICT (id) DO UPDATE SET
+        schoolname = EXCLUDED.schoolname,
+        academicyear = EXCLUDED.academicyear,
+        semester = EXCLUDED.semester,
+        latethreshold = EXCLUDED.latethreshold
+    `, [s.schoolName, s.academicYear, s.semester, s.lateThreshold]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

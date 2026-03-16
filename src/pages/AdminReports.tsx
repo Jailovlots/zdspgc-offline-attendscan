@@ -17,18 +17,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { getAllStudents, getAttendanceRecords, type StudentUser, type AttendanceRecord } from "@/lib/auth";
 import { getEvents, type SchoolEvent } from "@/data/events";
 import { toast } from "sonner";
-
-// ─── CSV Export Helper ───────────────────────────────────────────────────────
-function exportCsv(rows: string[][], filename: string) {
-    const content = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-}
+import { exportToCsv, type CSVSection } from "@/lib/exportUtils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface StudentRow {
@@ -162,13 +151,46 @@ const AdminReports = () => {
 
     // ── CSV Export ─────────────────────────────────────────────────────────────
     const handleExport = () => {
-        const header = ["Student ID", "Full Name", "Course", "Year Level", "Section", "Gender", "Status", "Time"];
-        const rows = filteredRows.map((r) => [
-            r.studentId, r.name, r.course, r.yearLevel, r.section, r.gender, r.status, r.time,
-        ]);
-        const eventLabel = selectedEvent ? selectedEvent.name.replace(/\s+/g, "_") : "All_Events";
-        exportCsv([header, ...rows], `AttendWise_Report_${eventLabel}_${new Date().toISOString().split("T")[0]}.csv`);
-        toast.success("Report exported as CSV");
+        const eventLabel = selectedEvent ? selectedEvent.name : "All Events";
+        const dateStamp = new Date().toLocaleDateString();
+
+        const sections: CSVSection[] = [
+            {
+                title: `AttendWise Attendance Report - ${eventLabel}`,
+                rows: [
+                    ["Export Date", dateStamp],
+                    ["Total Students", stats.total],
+                    ["Present", stats.present],
+                    ["Late", stats.late],
+                    ["Absent", stats.absent],
+                    ["Attendance Rate", `${stats.rate}%`],
+                ]
+            }
+        ];
+
+        if (selectedEvent) {
+            sections.push({
+                title: "Event Details",
+                rows: [
+                    ["Event Name", selectedEvent.name],
+                    ["Date", selectedEvent.date],
+                    ["Time", selectedEvent.time],
+                    ["Location", selectedEvent.location],
+                ]
+            });
+        }
+
+        sections.push({
+            title: "Attendance Data",
+            headers: ["Student ID", "Full Name", "Course", "Year Level", "Section", "Gender", "Status", "Time"],
+            rows: filteredRows.map((r) => [
+                r.studentId, r.name, r.course, r.yearLevel, r.section, r.gender, r.status, r.time,
+            ])
+        });
+
+        const fileName = `AttendWise_Report_${eventLabel.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;
+        exportToCsv(fileName, sections);
+        toast.success("Enhanced report exported as CSV");
     };
 
     // ── Loading state ──────────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ export interface StudentUser {
   section: string;
   gender: "Male" | "Female";
   role: "student" | "admin";
+  adminId?: number;
+  adminRole?: string;
   password?: string;
   phone?: string;
   birthday?: string;
@@ -41,6 +43,10 @@ export const setSession = (user: StudentUser | null) => {
 export const getSession = (): StudentUser | null => {
   const session = localStorage.getItem(SESSION_KEY);
   return session ? JSON.parse(session) : null;
+};
+
+export const logout = () => {
+  setSession(null);
 };
 
 // --- Backend API Integration ---
@@ -181,7 +187,8 @@ export const renameSectionItem = async (oldName: string, newName: string, type: 
 // --- Attendance ---
 
 export interface AttendanceRecord {
-  id: string; // studentId
+  id: string; // unique scan id (legacy)
+  studentId: string; // student's official ID
   name: string;
   course: string;
   section: string;
@@ -210,6 +217,30 @@ export const saveAttendanceRecord = async (record: AttendanceRecord) => {
 export const clearAttendanceRecords = async () => {
   const res = await fetch('/api/attendance/clear', {
     method: 'DELETE'
+  });
+  return res.ok;
+};
+
+export const deleteAttendanceRecords = async (ids: (string | number)[]) => {
+  const res = await fetch('/api/attendance/bulk', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  });
+  return res.ok;
+};
+
+export const getSystemSettings = async () => {
+  const res = await fetch('/api/settings');
+  if (res.ok) return await res.json();
+  return null;
+};
+
+export const updateSystemSettings = async (settings: any) => {
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings)
   });
   return res.ok;
 };

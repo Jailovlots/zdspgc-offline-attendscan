@@ -26,10 +26,9 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getAllAdmins, createAdmin, updateAdmin, deleteAdmin, AdminUser, getSession } from "@/lib/auth";
+import { useNavigate } from "react-router-dom";
+import { getAllAdmins, createAdmin, updateAdmin, deleteAdmin, AdminUser, getSession, logout, getSystemSettings, updateSystemSettings } from "@/lib/auth";
 import { toast } from "sonner";
-
-const SYSTEM_SETTINGS_KEY = "attendwise_system_settings";
 
 interface SystemSettings {
     schoolName: string;
@@ -37,12 +36,11 @@ interface SystemSettings {
     semester: string;
     lateThreshold: string; // e.g. "08:30"
 }
-
 const defaultSettings: SystemSettings = {
-    schoolName: "Zamboanga del Sur Provincial Government College",
+    schoolName: "ZDSPGC",
     academicYear: "2024-2025",
-    semester: "2nd",
-    lateThreshold: "08:30",
+    semester: "1st",
+    lateThreshold: "08:30"
 };
 
 const AdminSettings = () => {
@@ -67,9 +65,15 @@ const AdminSettings = () => {
 
     useEffect(() => {
         loadAdmins();
-        const saved = localStorage.getItem(SYSTEM_SETTINGS_KEY);
-        if (saved) setSysSettings(JSON.parse(saved));
+        loadSettings();
     }, []);
+
+    const loadSettings = async () => {
+        const settings = await getSystemSettings();
+        if (settings) {
+            setSysSettings(settings);
+        }
+    };
 
     const loadAdmins = async () => {
         setIsLoadingAdmins(true);
@@ -145,13 +149,15 @@ const AdminSettings = () => {
         setDeleteTarget(null);
     };
 
-    const handleSaveSystem = () => {
+    const handleSaveSystem = async () => {
         setIsSavingSys(true);
-        localStorage.setItem(SYSTEM_SETTINGS_KEY, JSON.stringify(sysSettings));
-        setTimeout(() => {
-            setIsSavingSys(false);
+        const success = await updateSystemSettings(sysSettings);
+        if (success) {
             toast.success("System settings saved");
-        }, 400);
+        } else {
+            toast.error("Failed to save settings");
+        }
+        setIsSavingSys(false);
     };
 
     const roleBadge = (role: string) =>

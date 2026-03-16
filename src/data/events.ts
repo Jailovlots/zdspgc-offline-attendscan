@@ -136,12 +136,31 @@ export const generateEventQrToken = (
 
 // Parse an event QR token
 export const parseEventQrToken = (token: string) => {
-  const match = token.match(/ZDSPGC-STU-(\d{4}-\d{5})-EVT-(EVT-\d{4}-\d{3})-TS-(\d+)-([A-Z0-9]+)/);
-  if (!match) return null;
-  return {
-    studentId: match[1],
-    eventId: match[2],
-    timestamp: parseInt(match[3], 10),
-    hash: match[4],
-  };
+  // More robust matching:
+  // ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
+  // Student ID can be YYYY-NNNNN or other alphanumeric formats
+  // Event ID can be EVT-YYYY-NNN or other formats
+  const match = token.match(/ZDSPGC-STU-(.*?)-EVT-(.*?)-TS-(\d+)-([A-Z0-9]+)/);
+  
+  if (match) {
+    return {
+      studentId: match[1],
+      eventId: match[2],
+      timestamp: parseInt(match[3], 10),
+      hash: match[4],
+    };
+  }
+
+  // Fallback for legacy format if any
+  const legacyMatch = token.match(/ZDSPGC-STU-([\w-]+)/);
+  if (legacyMatch && !token.includes("-EVT-")) {
+    return {
+      studentId: legacyMatch[1],
+      eventId: "EVT-GENERAL",
+      timestamp: Date.now(),
+      hash: "LEGACY",
+    };
+  }
+
+  return null;
 };

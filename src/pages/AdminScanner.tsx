@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, CheckCircle2, XCircle, Clock, Volume2, CalendarDays, Filter } from "lucide-react";
+import { Camera, CheckCircle2, XCircle, Clock, Volume2, CalendarDays, Filter, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,37 @@ import DashboardLayout from "@/components/DashboardLayout";
 import QrScannerComponent from "@/components/QrScannerComponent";
 import { toast } from "sonner";
 import { getEvents, parseEventQrToken, type SchoolEvent } from "@/data/events";
-import { getAllStudents, getSession, getAttendanceRecords, saveAttendanceRecord, clearAttendanceRecords, type AttendanceRecord, type StudentUser } from "@/lib/auth";
+import { getAllStudents, getSession, getAttendanceRecords, saveAttendanceRecord, clearAttendanceRecords, deleteAttendanceRecords, getSystemSettings, type AttendanceRecord, type StudentUser } from "@/lib/auth";
+import { Checkbox } from "@/components/ui/checkbox";
+import { exportToCsv } from "@/lib/exportUtils";
 
-const LATE_THRESHOLD_HOUR = 8;
+
+
+const parseTimeStringToMinutes = (timeString: string): number | null => {
+  try {
+    // 1. Check for "HH:mm" format (e.g., "08:30" from system settings)
+    const hhmmMatch = timeString.match(/^(\d{1,2}):(\d{2})$/);
+    if (hhmmMatch) {
+      return parseInt(hhmmMatch[1], 10) * 60 + parseInt(hhmmMatch[2], 10);
+    }
+
+    // 2. Original logic for event times (e.g., "10:00 AM - 11:00 AM")
+    const startTimeStr = timeString.split(/[-–]/)[0].trim();
+    const match = startTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!match) return null;
+
+    let h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    const period = match[3].toUpperCase();
+
+    if (period === "PM" && h < 12) h += 12;
+    if (period === "AM" && h === 12) h = 0;
+
+    return h * 60 + m;
+  } catch (err) {
+    return null;
+  }
+};
 
 const AdminScanner = () => {
   const navigate = useNavigate();
@@ -21,8 +49,10 @@ const AdminScanner = () => {
   const [lastScan, setLastScan] = useState<AttendanceRecord | null>(null);
   const [scanCount, setScanCount] = useState(0);
   const [selectedEventFilter, setSelectedEventFilter] = useState<string>("all");
-  const [events, setEvents] = useState<SchoolEvent[]>([]);
   const [allStudents, setAllStudents] = useState<StudentUser[]>([]);
+  const [events, setEvents] = useState<SchoolEvent[]>([]);
+  const [systemSettings, setSystemSettings] = useState({ lateThreshold: "08:30" });
+  const [selectedIds, setSelectedIds] = useState<Set<number | string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -35,21 +65,52 @@ const AdminScanner = () => {
     const init = async () => {
       setIsLoading(true);
       try {
-        const [savedRecords, eventsData, studentsData] = await Promise.all([
+        // Load system settings from the server (centralized)
+        const settings = await getSystemSettings();
+        if (settings) {
+          setSystemSettings(settings);
+        }
+
+        // Parallel fetch with individual error handling for better resilience
+        const results = await Promise.allSettled([
           getAttendanceRecords(),
           getEvents(),
           getAllStudents()
         ]);
-        
-        setScannedRecords(savedRecords);
-        setScanCount(savedRecords.length);
-        if (savedRecords.length > 0) {
-          setLastScan(savedRecords[0]);
+
+        if (results[0].status === "fulfilled") {
+          const savedRecords = results[0].value;
+          setScannedRecords(savedRecords);
+          setScanCount(savedRecords.length);
+          if (savedRecords.length > 0) setLastScan(savedRecords[0]);
+        } else {
+          console.error("Attendance records fetch error:", results[0].reason);
+          toast.error("Could not load attendance history");
         }
-        setEvents(eventsData);
-        setAllStudents(studentsData);
-      } catch (err) {
-        toast.error("Failed to sync scanner data");
+
+        if (results[1].status === "fulfilled") {
+          setEvents(results[1].value);
+        } else {
+          console.error("Events fetch error:", results[1].reason);
+          toast.error("Could not load events list");
+        }
+
+        if (results[2].status === "fulfilled") {
+          setAllStudents(results[2].value);
+        } else {
+          console.error("Students fetch error:", results[2].reason);
+          toast.error("Could not load student database");
+        }
+
+        // If all failed, show the primary error
+        if (results.every(r => r.status === "rejected")) {
+          throw new Error("Backend server unreachable. Please check port 3002.");
+        }
+      } catch (err: any) {
+        console.error("Scanner sync error:", err);
+        toast.error("Failed to sync scanner data", {
+          description: err.message || "Please check if the backend server is running on port 3002."
+        });
       } finally {
         setIsLoading(false);
       }
@@ -64,6 +125,24 @@ const AdminScanner = () => {
         : scannedRecords.filter((r) => r.eventId === selectedEventFilter),
     [scannedRecords, selectedEventFilter]
   );
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredRecords.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredRecords.map((r) => r.id as string | number)));
+    }
+  }, [filteredRecords, selectedIds]);
+
+  const toggleSelect = useCallback((id: string | number) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  }, [selectedIds]);
 
   const findStudent = (id: string) => {
     const student = allStudents.find((u) => u.studentId === id);
@@ -112,7 +191,7 @@ const AdminScanner = () => {
       const parsed = parseEventQrToken(decodedText);
 
       // Fallback: old format ZDSPGC-STU-YYYY-NNNNN-XXXXXXXX
-      const legacyMatch = !parsed ? decodedText.match(/ZDSPGC-STU-(\d{4}-\d{5})/) : null;
+      const legacyMatch = !parsed ? decodedText.match(/ZDSPGC-STU-([\w-]+)/) : null;
       const studentId = parsed?.studentId ?? (legacyMatch ? legacyMatch[1] : null);
       const eventId = parsed?.eventId ?? "EVT-GENERAL";
 
@@ -135,7 +214,7 @@ const AdminScanner = () => {
       const eventName = event?.name ?? "General Attendance";
 
       // Check duplicate: same student + same event
-      if (studentId && scannedRecords.some((r) => r.id === studentId && r.eventId === eventId)) {
+      if (studentId && scannedRecords.some((r) => r.studentId === studentId && r.eventId === eventId)) {
         playErrorBeep();
         toast.warning("Already scanned", {
           description: `Student ${studentId} was already recorded for ${eventName}.`,
@@ -145,13 +224,34 @@ const AdminScanner = () => {
 
       const now = new Date();
       const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-      const status: "Present" | "Late" = now.getHours() >= LATE_THRESHOLD_HOUR ? "Late" : "Present";
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      let status: "Present" | "Late" = "Present";
+
+      if (event && event.time) {
+        const eventStartMinutes = parseTimeStringToMinutes(event.time);
+        if (eventStartMinutes !== null) {
+          // Grace period: mark as Late ONLY if more than 15 minutes past start
+          if (currentMinutes > eventStartMinutes + 15) {
+            status = "Late";
+          }
+        } else {
+          // Fallback if time format is unparseable
+          const thresholdMinutes = parseTimeStringToMinutes(systemSettings.lateThreshold) || 480; // Default 8:00 AM
+          status = currentMinutes >= thresholdMinutes ? "Late" : "Present";
+        }
+      } else {
+        // Fallback for General Attendance
+        const thresholdMinutes = parseTimeStringToMinutes(systemSettings.lateThreshold) || 480;
+        status = currentMinutes >= thresholdMinutes ? "Late" : "Present";
+      }
 
       const student = studentId ? findStudent(studentId) : null;
 
       if (studentId && student) {
         const record: AttendanceRecord = {
-          id: studentId,
+          id: studentId, // In local state, we'll keep id as studentId for backward compat
+          studentId: studentId, 
           name: student.name,
           course: student.course,
           section: student.section,
@@ -185,8 +285,37 @@ const AdminScanner = () => {
         });
       }
     },
-    [scannedRecords, playBeep, playErrorBeep, events, allStudents]
+    [scannedRecords, playBeep, playErrorBeep, events, allStudents, systemSettings.lateThreshold]
   );
+  
+  const handleExport = () => {
+    if (scannedRecords.length === 0) {
+      toast.error("No records to export");
+      return;
+    }
+
+    const sections = [
+      {
+        title: `AttendWise Scanner Attendance Export`,
+        rows: [
+          ["Export Generated", new Date().toLocaleString()],
+          ["Total Scans in this Session", scannedRecords.length],
+        ]
+      },
+      {
+        title: "Scanned Records Log",
+        headers: ["Student ID", "Full Name", "Course", "Section", "Gender", "Event", "Status", "Time"],
+        rows: scannedRecords.map(s => [
+          s.studentId || s.id, s.name, s.course, s.section, s.gender, s.eventName, s.status, s.time
+        ])
+      }
+    ];
+
+    const dateStr = new Date().toLocaleDateString('en-CA');
+    const fileName = `Scanner_Attendance_${dateStr}.csv`;
+    exportToCsv(fileName, sections);
+    toast.success("Attendance records exported successfully");
+  };
 
 
   // Unique events that have been scanned
@@ -330,20 +459,58 @@ const AdminScanner = () => {
                       </SelectContent>
                     </Select>
                   )}
-                  <Button
+
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border bg-muted/30 text-xs font-medium text-muted-foreground">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Lateness threshold: {systemSettings.lateThreshold > "12:00" ? 
+                      `${parseInt(systemSettings.lateThreshold.split(':')[0]) - 12}:${systemSettings.lateThreshold.split(':')[1]} PM` : 
+                      `${systemSettings.lateThreshold} AM`}</span>
+                  </div>
+
+                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={handleExport}
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="h-3 w-3" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     onClick={async () => {
-                      if (confirm("Are you sure you want to clear all records?")) {
-                        await clearAttendanceRecords();
-                        setScannedRecords([]);
-                        setLastScan(null);
-                        setScanCount(0);
-                        toast.success("All attendance records cleared");
+                      if (selectedIds.size > 0) {
+                        if (confirm(`Are you sure you want to delete ${selectedIds.size} selected records?`)) {
+                          const idsToDelete = Array.from(selectedIds);
+                          const success = await deleteAttendanceRecords(idsToDelete);
+                          if (success) {
+                            setScannedRecords(prev => prev.filter(r => !selectedIds.has(r.id as string | number)));
+                            setSelectedIds(new Set());
+                            setScanCount(c => c - idsToDelete.length);
+                            toast.success(`${idsToDelete.length} records deleted`);
+                          } else {
+                            toast.error("Failed to delete selected records");
+                          }
+                        }
+                      } else {
+                        if (confirm("Are you sure you want to clear all records? This will delete them from the server.")) {
+                          const success = await clearAttendanceRecords();
+                          if (success) {
+                            setScannedRecords([]);
+                            setLastScan(null);
+                            setScanCount(0);
+                            setSelectedIds(new Set());
+                            toast.success("All attendance records cleared");
+                          } else {
+                            toast.error("Failed to clear records");
+                          }
+                        }
                       }
                     }}
                   >
-                    Clear All
+                    {selectedIds.size > 0 ? `Clear Selected (${selectedIds.size})` : "Clear All"}
                   </Button>
                 </div>
               </div>
@@ -352,6 +519,13 @@ const AdminScanner = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox 
+                        checked={filteredRecords.length > 0 && selectedIds.size === filteredRecords.length}
+                        onCheckedChange={() => toggleSelectAll()}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[60px]">No.</TableHead>
                     <TableHead>Student ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Course</TableHead>
@@ -363,13 +537,24 @@ const AdminScanner = () => {
                 </TableHeader>
                 <TableBody>
                   {filteredRecords.map((row, i) => (
-                    <TableRow key={`${row.id}-${row.eventId}-${i}`}>
-                      <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                    <TableRow key={`${row.studentId || row.id}-${row.eventId}-${row.timestamp}-${i}`}>
+                      <TableCell>
+                        <Checkbox 
+                          checked={selectedIds.has(row.id as string | number)}
+                          onCheckedChange={() => toggleSelect(row.id as string | number)}
+                        />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground font-medium">
+                        {filteredRecords.length - i}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
                       <TableCell className="font-medium">{row.name}</TableCell>
                       <TableCell>{row.course}</TableCell>
                       <TableCell>{row.section}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-[10px]">{row.eventName}</Badge>
+                        <Badge variant="outline" className="text-[10px] bg-background">
+                          {row.eventName || "General Attendance"}
+                        </Badge>
                       </TableCell>
                       <TableCell>{row.time}</TableCell>
                       <TableCell>

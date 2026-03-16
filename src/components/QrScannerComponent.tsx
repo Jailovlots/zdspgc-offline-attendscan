@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
+import { toast } from "sonner";
 
 interface QrScannerComponentProps {
   onScanSuccess: (decodedText: string) => void;
@@ -12,13 +13,34 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [isNativeApp, setIsNativeApp] = useState(false);
 
   useEffect(() => {
+    // Check for native app bridge (it may take a moment to inject)
+    const checkBridge = () => {
+      if ((window as any).ReactNativeWebView) {
+        setIsNativeApp(true);
+        return true;
+      }
+      return false;
+    };
+
+    if (!checkBridge()) {
+      const interval = setInterval(() => {
+        if (checkBridge()) {
+          clearInterval(interval);
+        }
+      }, 500);
+      
+      // Stop checking after 10 seconds
+      setTimeout(() => clearInterval(interval), 10000);
+    }
+
+    // 1. Web Scanner Initialization (for desktop/HTTPS)
     Html5Qrcode.getCameras()
       .then((devices) => {
         if (devices && devices.length > 0) {
           setCameras(devices);
-          // Prefer back camera
           const backCam = devices.find(
             (d) => d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("rear")
           );
@@ -32,85 +54,208 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
         console.error("Camera error:", err);
       });
 
+    // 2. Native Bridge Listener (for mobile app)
+    const handleNativeScan = (event: any) => {
+      const decodedText = event.detail;
+      onScanSuccess(decodedText);
+      toast.success("Native scan successful");
+    };
+
+    window.addEventListener('nativeScan', handleNativeScan);
+
+    // 3. Ping the bridge
+    if ((window as any).ReactNativeWebView) {
+      (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'PING' }));
+    }
+
     return () => {
+      window.removeEventListener('nativeScan', handleNativeScan);
       stopScanner();
     };
-  }, []);
+  }, [onScanSuccess]);
+
+  // Restoring auto-start effect
+  useEffect(() => {
+    if (selectedCamera && !isStarted) {
+      startScanner();
+    }
+  }, [selectedCamera]);
 
   const startScanner = async () => {
     if (!selectedCamera) return;
 
     try {
-      const scanner = new Html5Qrcode("qr-reader");
+      // Clear existing scanner instance if it exists
+      if (scannerRef.current) {
+        try {
+          await scannerRef.current.stop();
+        } catch (e) { /* ignore */ }
+      }
+
+      const scanner = new Html5Qrcode("qr-reader", {
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
+      });
       scannerRef.current = scanner;
+
+      const config = {
+        fps: 20, // Increased for smoother scanning
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const qrboxSize = Math.floor(minEdge * 0.7);
+          return { width: qrboxSize, height: qrboxSize };
+        },
+        aspectRatio: 1.0,
+      };
 
       await scanner.start(
         selectedCamera,
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1,
-        },
+        config,
         (decodedText) => {
           onScanSuccess(decodedText);
-          // Don't stop — let the parent decide
         },
         (errorMessage) => {
-          // Ignore scan failures (no QR in frame)
+          // Ignore scan failures
         }
       );
       setIsStarted(true);
       setError("");
     } catch (err: any) {
-      setError(err?.message || "Failed to start scanner");
-      onScanError?.(err?.message || "Failed to start scanner");
+      console.error("Scanner start error:", err);
+      const msg = err?.message || "Failed to start scanner. Please ensure camera permissions are granted.";
+      setError(msg);
+      onScanError?.(msg);
+    }
+  };
+
+
+  const startNativeScan = () => {
+    // Message to Expo mobile app via react-native-webview bridge
+    if (isNativeApp) {
+      (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'START_NATIVE_SCAN' }));
+    } else {
+      toast.error("Bridge not found", {
+        description: "The native scanner only works inside our mobile app."
+      });
     }
   };
 
   const stopScanner = async () => {
-    if (scannerRef.current && isStarted) {
+    if (scannerRef.current) {
       try {
-        await scannerRef.current.stop();
+        if (isStarted) {
+          await scannerRef.current.stop();
+        }
         scannerRef.current.clear();
       } catch (e) {
-        // ignore
+        console.error("Stop error:", e);
       }
       setIsStarted(false);
     }
   };
 
+  const refreshCameras = () => {
+    setError("");
+    Html5Qrcode.getCameras()
+      .then((devices) => {
+        if (devices && devices.length > 0) {
+          setCameras(devices);
+          const backCam = devices.find(
+            (d) => d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("rear")
+          );
+          const newCamId = backCam ? backCam.id : devices[0].id;
+          setSelectedCamera(newCamId);
+          toast.success("Cameras refreshed");
+        } else {
+          setError("No cameras found. Please check connections and permissions.");
+        }
+      })
+      .catch((err) => {
+        setError("Camera access denied or failed.");
+        console.error("Refresh error:", err);
+      });
+  };
+
   const switchCamera = async (cameraId: string) => {
+    if (cameraId === selectedCamera) return;
+    
     setSelectedCamera(cameraId);
     if (isStarted) {
       await stopScanner();
-      // Re-start will be triggered by button
+      // startScanner will be triggered by the useEffect on selectedCamera
     }
   };
 
   return (
     <div className="flex flex-col items-center gap-4 w-full">
+      {/* Mobile App Shortcut - Only show if in the actual App shell */}
+      {isNativeApp && !isStarted && (
+        <button
+          onClick={startNativeScan}
+          className="w-full bg-primary/10 text-primary border border-primary/20 py-4 rounded-xl font-bold flex flex-col items-center gap-1 hover:bg-primary/20 transition-all active:scale-[0.98]"
+        >
+          <span className="text-lg">📱 Open Phone Scanner</span>
+          <span className="text-[10px] uppercase tracking-tight opacity-70">Native Bridge Enabled</span>
+        </button>
+      )}
+
       {error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg w-full text-center">
-          {error}
+        <div className="bg-destructive/10 text-destructive text-xs p-4 rounded-xl w-full flex flex-col gap-3 items-center border border-destructive/20">
+          <p className="text-center font-bold text-sm">Scanner Issue Detected</p>
+          <p className="text-center opacity-80">{error}</p>
+          
+          <div className="grid grid-cols-1 gap-2 w-full mt-2">
+            {!isNativeApp && (
+              <div className="bg-white/50 p-2 rounded-lg border border-destructive/10 text-[10px] space-y-1">
+                <p className="font-bold">⚠️ You are in a Browser (Chrome)</p>
+                <p>Cameras are blocked on "http" addresses. For the native scanner, please use the **Expo Go App** instead of Chrome.</p>
+              </div>
+            )}
+            
+            <div className="flex gap-2 justify-center">
+              <button 
+                onClick={refreshCameras}
+                className="text-[10px] bg-destructive/20 hover:bg-destructive/30 px-4 py-2 rounded-lg transition-colors font-medium"
+              >
+                Refresh
+              </button>
+              {isNativeApp && (
+                <button 
+                  onClick={startNativeScan}
+                  className="text-[10px] bg-gold text-gold-foreground px-4 py-2 rounded-lg transition-colors font-bold shadow-sm"
+                >
+                  Use Phone Scanner
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       <div
         id="qr-reader"
-        className="w-full max-w-md rounded-xl overflow-hidden border-2 border-border bg-muted"
-        style={{ minHeight: isStarted ? "auto" : "300px" }}
+        className="w-full max-w-md rounded-xl overflow-hidden border-2 border-border bg-black shadow-inner"
+        style={{ minHeight: isStarted ? "auto" : "280px" }}
       />
 
+      {cameras.length > 0 && !isStarted && (
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+          Select Camera
+        </p>
+      )}
+
       {cameras.length > 1 && (
-        <div className="flex gap-2 flex-wrap justify-center">
+        <div className="flex gap-2 flex-wrap justify-center overflow-x-auto pb-1 max-w-full">
           {cameras.map((cam) => (
             <button
               key={cam.id}
               onClick={() => switchCamera(cam.id)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+              className={`text-[10px] whitespace-nowrap px-3 py-1.5 rounded-full border transition-all ${
                 selectedCamera === cam.id
-                  ? "bg-gold text-gold-foreground border-gold"
-                  : "bg-muted text-muted-foreground border-border hover:border-gold/50"
+                  ? "bg-gold text-gold-foreground border-gold shadow-sm font-bold scale-105"
+                  : "bg-muted text-muted-foreground border-border hover:border-gold/30"
               }`}
             >
               {cam.label || `Camera ${cameras.indexOf(cam) + 1}`}
@@ -124,17 +269,26 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
           <button
             onClick={startScanner}
             disabled={!selectedCamera}
-            className="px-6 py-2.5 bg-gold text-gold-foreground font-semibold rounded-lg hover:bg-gold/90 transition-colors disabled:opacity-50"
+            className="px-8 py-3 bg-gold text-gold-foreground font-bold rounded-xl shadow-lg hover:shadow-xl hover:bg-gold/90 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center gap-2"
           >
-            Start Scanner
+            <div className="h-2 w-2 rounded-full bg-current animate-pulse" />
+            Launch Scanner
           </button>
         ) : (
-          <button
-            onClick={stopScanner}
-            className="px-6 py-2.5 bg-destructive text-destructive-foreground font-semibold rounded-lg hover:bg-destructive/90 transition-colors"
-          >
-            Stop Scanner
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={stopScanner}
+              className="px-6 py-2.5 bg-destructive/10 text-destructive border border-destructive/20 font-semibold rounded-lg hover:bg-destructive/20 active:scale-95 transition-all"
+            >
+              Stop
+            </button>
+            <button
+              onClick={refreshCameras}
+              className="px-4 py-2.5 bg-secondary text-secondary-foreground font-semibold rounded-lg hover:bg-secondary/80 active:scale-95 transition-all"
+            >
+              Reset
+            </button>
+          </div>
         )}
       </div>
     </div>

@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { LogOut, LayoutDashboard, QrCode, ClipboardList, User, Camera, Users, BarChart3, Settings, Calendar, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import zdspgcLogo from "@/assets/school-logo.jpg";
+import { logout } from "@/lib/auth";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -65,7 +66,10 @@ const DashboardLayout = ({ children, role }: DashboardLayoutProps) => {
         <div className="p-4 border-t border-navy-light">
           <Button
             variant="ghost"
-            onClick={() => navigate("/")}
+            onClick={() => {
+              logout();
+              navigate("/");
+            }}
             className="w-full justify-start text-primary-foreground/70 hover:text-primary-foreground hover:bg-navy-light/50"
           >
             <LogOut className="h-4 w-4 mr-3" />
@@ -81,7 +85,15 @@ const DashboardLayout = ({ children, role }: DashboardLayoutProps) => {
             <img src={zdspgcLogo} alt="ZDSPGC" className="h-8 w-8 rounded-full" />
             <span className="text-gold font-bold text-sm">AttendWise</span>
           </Link>
-          <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="text-primary-foreground/70">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              logout();
+              navigate("/");
+            }}
+            className="text-primary-foreground/70"
+          >
             <LogOut className="h-4 w-4" />
           </Button>
         </header>

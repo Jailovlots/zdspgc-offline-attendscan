@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Badge } from "@/components/ui/badge";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getSession, getAttendanceRecords } from "@/lib/auth";
 import { useMemo, useEffect } from "react";
@@ -29,7 +30,7 @@ const StudentAttendance = () => {
       try {
         const records = await getAttendanceRecords();
         const personal = records
-          .filter(r => r.id === session.studentId)
+          .filter(r => (r.studentId || r.id) === session.studentId)
           .map(r => ({
             ...r,
             formattedDate: new Date(r.timestamp).toLocaleDateString(),
@@ -158,19 +159,26 @@ const StudentAttendance = () => {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Day</TableHead>
-                  <TableHead>Time In</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
+                  <TableRow>
+                    <TableHead>Date & Day</TableHead>
+                    <TableHead>Event</TableHead>
+                    <TableHead>Time In</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((row, i) => (
                   <TableRow key={row.timestamp + i}>
-                    <TableCell className="font-medium">{row.formattedDate}</TableCell>
-                    <TableCell>{row.day}</TableCell>
-                    <TableCell>{row.time}</TableCell>
+                    <TableCell>
+                      <div className="font-medium text-sm">{row.formattedDate}</div>
+                      <div className="text-[10px] text-muted-foreground uppercase">{row.day}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px] bg-background">
+                        {row.eventName || "General Attendance"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{row.time}</TableCell>
                     <TableCell>
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"

@@ -1,17 +1,20 @@
 import { useState, useMemo, useEffect } from "react";
-import { Users, CheckCircle2, Clock, XCircle, Camera, Download, Search } from "lucide-react";
+import { Users, CheckCircle2, Clock, XCircle, Camera, Download, Search, LayoutGrid, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getAllStudents, getAttendanceRecords, getCourseSections, type AttendanceRecord, type StudentUser } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
+import { exportToCsv } from "@/lib/exportUtils";
+import { toast } from "sonner";
 
-const getTodayDateString = () => new Date().toISOString().split("T")[0];
+const getTodayDateString = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
 
 interface SectionEntry {
   section: string;
@@ -30,6 +33,9 @@ interface SectionEntry {
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
+  const [viewMode, setViewMode] = useState<"grouped" | "list">("grouped");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCourse, setSelectedCourse] = useState<string>("All");
   const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
@@ -51,10 +57,13 @@ const AdminDashboard = () => {
         ]);
 
         setRegisteredUsers(users.filter(u => u.role === "student"));
+        
+        // Filter records by the specific selectedDate (YYYY-MM-DD)
         setAttendanceRecords(records.filter(r => {
-          const recordDate = new Date(r.timestamp).toISOString().split("T")[0];
-          return recordDate === todayStr;
+          const recordDate = new Date(r.timestamp).toLocaleDateString('en-CA'); // YYYY-MM-DD
+          return recordDate === selectedDate;
         }));
+        
         setCourseSections(sections);
       } catch (err) {
         console.error("Dashboard data load failed:", err);
@@ -63,7 +72,7 @@ const AdminDashboard = () => {
       }
     };
     init();
-  }, [todayStr]);
+  }, [selectedDate]);
 
   // Calculate dynamic section metrics from real users
   const sectionMetrics = useMemo(() => {
@@ -91,7 +100,8 @@ const AdminDashboard = () => {
 
     // Count scans
     attendanceRecords.forEach(r => {
-      const student = registeredUsers.find(u => u.studentId === r.id);
+      const sId = r.studentId;
+      const student = registeredUsers.find(u => u.studentId === sId);
       if (student && metrics[student.section]) {
         if (r.status === "Present") {
           metrics[student.section].present++;
@@ -161,12 +171,12 @@ const AdminDashboard = () => {
     const femaleTotal = courseUsers.filter(u => u.gender === "Female").length;
 
     const maleAttended = attendanceRecords.filter(r => {
-      const student = courseUsers.find(u => u.studentId === r.id);
+      const student = courseUsers.find(u => u.studentId === r.studentId);
       return student?.gender === "Male";
     }).length;
 
     const femaleAttended = attendanceRecords.filter(r => {
-      const student = courseUsers.find(u => u.studentId === r.id);
+      const student = courseUsers.find(u => u.studentId === r.studentId);
       return student?.gender === "Female";
     }).length;
 
@@ -194,21 +204,26 @@ const AdminDashboard = () => {
 
   const filteredScans = useMemo(() => {
     let scans = attendanceRecords.map(r => {
-      const student = registeredUsers.find(u => u.studentId === r.id);
+      const student = registeredUsers.find(u => u.studentId === r.studentId);
       return {
-        id: r.id,
+        id: r.studentId,
         name: r.name,
         course: student?.course || "N/A",
         year: student?.yearLevel || "N/A",
         section: student?.section || "N/A",
         gender: r.gender,
         time: r.time,
-        status: r.status
+        status: r.status,
+        eventName: r.eventName || "General Attendance"
       };
     });
 
     if (selectedCourse !== "All") {
       scans = scans.filter((s) => s.course === selectedCourse);
+    }
+    if (statusFilter !== "all") {
+      const targetStatus = statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1);
+      scans = scans.filter((s) => s.status === targetStatus);
     }
     if (searchQuery) {
       scans = scans.filter(
@@ -218,7 +233,7 @@ const AdminDashboard = () => {
       );
     }
     return scans;
-  }, [attendanceRecords, registeredUsers, selectedCourse, searchQuery]);
+  }, [attendanceRecords, registeredUsers, selectedCourse, searchQuery, statusFilter]);
 
   // Group filtered scans by course → year → section
   const groupedScans = useMemo(() => {
@@ -231,6 +246,50 @@ const AdminDashboard = () => {
     });
     return groups;
   }, [filteredScans]);
+
+  const handleExport = () => {
+    const courseLabel = selectedCourse === "All" ? "All Courses" : selectedCourse;
+    const dateLabel = selectedDate;
+
+    const sections = [
+      {
+        title: `AttendWise Attendance Record`,
+        rows: [
+          ["Course/Department", courseLabel],
+          ["Attendance Date", dateLabel],
+          ["Export Generated", new Date().toLocaleString()],
+        ]
+      },
+      {
+        title: "Summary Statistics",
+        rows: [
+          ["Total Students in Filter", stats.total],
+          ["Present", stats.present],
+          ["Late", stats.late],
+          ["Absent", stats.absent],
+          ["Attendance Rate", stats.total > 0 ? `${Math.round(((stats.present + stats.late) / stats.total) * 100)}%` : "0%"],
+        ]
+      },
+      {
+        title: "Gender Breakdown",
+        rows: [
+          ["Male (Present/Total)", `${genderStats.male.attended} / ${genderStats.male.total}`],
+          ["Female (Present/Total)", `${genderStats.female.attended} / ${genderStats.female.total}`],
+        ]
+      },
+      {
+        title: "Detailed Attendance Log",
+        headers: ["Student ID", "Full Name", "Course", "Year", "Section", "Gender", "Event", "Status", "Time"],
+        rows: filteredScans.map(s => [
+          s.id, s.name, s.course, s.year, s.section, s.gender, s.eventName, s.time, s.status
+        ])
+      }
+    ];
+
+    const fileName = `Attendance_Record_${courseLabel.replace(/\s+/g, "_")}_${dateLabel}.csv`;
+    exportToCsv(fileName, sections);
+    toast.success("Attendance record exported");
+  };
 
   if (isLoading) {
     return (
@@ -248,31 +307,66 @@ const AdminDashboard = () => {
   return (
     <DashboardLayout role="admin">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Admin Dashboard</h1>
             <p className="text-muted-foreground text-sm mt-1">
-              {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} — Overview
+              {new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} — {selectedCourse} Overview
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 bg-background border rounded-lg px-3 py-1 shadow-sm">
+              <span className="text-xs font-semibold text-muted-foreground uppercase">Date:</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer"
+              />
+            </div>
+            <div className="h-9 border-r mx-1 hidden sm:block" />
             <Button onClick={() => navigate("/admin/scanner")} className="bg-gold text-gold-foreground hover:bg-gold/90">
               <Camera className="h-4 w-4 mr-2" /> Scan QR
             </Button>
-            <Button variant="outline">
+            <Button onClick={handleExport} variant="outline">
               <Download className="h-4 w-4 mr-2" /> Export CSV
             </Button>
           </div>
         </div>
 
-        {/* Course Tabs */}
-        <Tabs value={selectedCourse} onValueChange={setSelectedCourse}>
-          <TabsList>
-            {COURSES.map((c) => (
-              <TabsTrigger key={c} value={c}>{c}</TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {/* Course Tabs & View Toggle */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/30 p-2 rounded-xl border">
+          <Tabs value={selectedCourse} onValueChange={setSelectedCourse} className="w-full sm:w-auto">
+            <TabsList className="bg-transparent">
+              {COURSES.map((c) => (
+                <TabsTrigger key={c} value={c} className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  {c}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          
+          <div className="flex items-center gap-1 bg-background/50 p-1 rounded-lg border shadow-sm">
+            <Button 
+              variant={viewMode === "grouped" ? "secondary" : "ghost"} 
+              size="sm" 
+              onClick={() => setViewMode("grouped")}
+              className="h-8 gap-2 rounded-md"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              <span className="text-xs font-medium">Grouped</span>
+            </Button>
+            <Button 
+              variant={viewMode === "list" ? "secondary" : "ghost"} 
+              size="sm" 
+              onClick={() => setViewMode("list")}
+              className="h-8 gap-2 rounded-md"
+            >
+              <List className="h-4 w-4" />
+              <span className="text-xs font-medium">List View</span>
+            </Button>
+          </div>
+        </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -417,86 +511,161 @@ const AdminDashboard = () => {
 
         {/* Recent Scans */}
         <Card className="shadow-card">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 border-b mb-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <CardTitle className="text-base font-sans">
-                {selectedCourse === "All" ? "Recent Scans" : `${selectedCourse} — Recent Scans`}
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <Users className="h-4 w-4 text-gold" />
+                {selectedCourse === "All" ? "Attendance Records" : `${selectedCourse} Attendance Records`}
+                <Badge variant="outline" className="ml-2 font-mono font-normal">
+                  {new Date(selectedDate).toLocaleDateString()}
+                </Badge>
               </CardTitle>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search student..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 w-56"
+                    className="pl-9 w-full sm:w-56 h-9"
                   />
                 </div>
-                <Select defaultValue="all">
-                  <SelectTrigger className="w-32">
-                    <SelectValue placeholder="Filter" />
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[130px] h-9">
+                    <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="present">Present</SelectItem>
                     <SelectItem value="late">Late</SelectItem>
-                    <SelectItem value="absent">Absent</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {Object.entries(groupedScans).map(([course, years]) => (
-              <div key={course}>
-                <h3 className="text-sm font-bold text-foreground mb-3">{course}</h3>
-                {Object.entries(years).map(([year, sections]) => (
-                  <div key={`${course}-${year}`} className="mb-4 ml-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{year}</p>
-                    {Object.entries(sections).map(([section, scans]) => (
-                      <div key={section} className="mb-3 ml-2">
-                        <p className="text-xs font-medium text-foreground/70 mb-1">📋 {section}</p>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Student ID</TableHead>
-                              <TableHead>Name</TableHead>
-                              <TableHead>Gender</TableHead>
-                              <TableHead>Time</TableHead>
-                              <TableHead>Status</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {scans.map((row) => (
-                              <TableRow key={row.id}>
-                                <TableCell className="font-mono text-sm">{row.id}</TableCell>
-                                <TableCell className="font-medium">{row.name}</TableCell>
-                                <TableCell>
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.gender === 'Male' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
-                                    {row.gender?.toUpperCase()}
-                                  </span>
-                                </TableCell>
-                                <TableCell>{row.time}</TableCell>
-                                <TableCell>
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
-                                      ? "bg-success/10 text-success"
-                                      : "bg-warning/10 text-warning"
-                                      }`}
-                                  >
-                                    {row.status}
-                                  </span>
-                                </TableCell>
+            {viewMode === "grouped" ? (
+              Object.entries(groupedScans).map(([course, years]) => (
+                <div key={course}>
+                  <h3 className="text-sm font-bold text-foreground mb-3">{course}</h3>
+                  {Object.entries(years).map(([year, sections]) => (
+                    <div key={`${course}-${year}`} className="mb-4 ml-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{year}</p>
+                      {Object.entries(sections).map(([section, scans]) => (
+                        <div key={section} className="mb-3 ml-2">
+                          <p className="text-xs font-medium text-foreground/70 mb-1">📋 {section}</p>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Student ID</TableHead>
+                                <TableHead>Name</TableHead>
+                                 <TableHead>Gender</TableHead>
+                                 <TableHead>Event</TableHead>
+                                 <TableHead>Time</TableHead>
+                                 <TableHead>Status</TableHead>
                               </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    ))}
-                  </div>
-                ))}
+                            </TableHeader>
+                            <TableBody>
+                              {scans.map((row) => (
+                                <TableRow key={row.id}>
+                                  <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                                  <TableCell className="font-medium">{row.name}</TableCell>
+                                  <TableCell>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.gender === 'Male' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
+                                      {row.gender?.toUpperCase()}
+                                    </span>
+                                  </TableCell>
+                                   <TableCell>
+                                     <Badge variant="outline" className="text-[10px] whitespace-nowrap">
+                                       {row.eventName}
+                                     </Badge>
+                                   </TableCell>
+                                   <TableCell>{row.time}</TableCell>
+                                  <TableCell>
+                                    <span
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
+                                        ? "bg-success/10 text-success"
+                                        : "bg-warning/10 text-warning"
+                                        }`}
+                                    >
+                                      {row.status}
+                                    </span>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[120px]">Student ID</TableHead>
+                      <TableHead>Full Name</TableHead>
+                       <TableHead>Course & Section</TableHead>
+                       <TableHead>Event</TableHead>
+                       <TableHead className="w-[100px]">Gender</TableHead>
+                       <TableHead className="w-[120px]">Time</TableHead>
+                       <TableHead className="w-[100px] text-right">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredScans.length > 0 ? (
+                      filteredScans.map((row) => (
+                        <TableRow key={row.id} className="hover:bg-muted/30">
+                          <TableCell className="font-mono text-sm font-medium">{row.id}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-semibold text-sm">{row.name}</p>
+                              <p className="text-[10px] text-muted-foreground uppercase">{row.year} Year</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-xs">
+                              <span className="font-bold text-primary">{row.course}</span>
+                              <span className="mx-1 text-muted-foreground">•</span>
+                               <span className="text-muted-foreground">{row.section}</span>
+                             </div>
+                           </TableCell>
+                           <TableCell>
+                             <Badge variant="outline" className="text-[10px] whitespace-nowrap">
+                               {row.eventName}
+                             </Badge>
+                           </TableCell>
+                           <TableCell>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.gender === 'Male' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
+                              {row.gender?.toUpperCase()}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{row.time}</TableCell>
+                          <TableCell className="text-right">
+                            <span 
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                row.status === "Present" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                              }`}
+                            >
+                              {row.status}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                          No attendance records found for the selected filters.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
       </div>

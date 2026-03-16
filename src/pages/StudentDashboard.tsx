@@ -3,10 +3,11 @@ import { CheckCircle2, Clock, XCircle, CalendarDays, RefreshCw, Calendar, MapPin
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getSession, getAttendanceRecords, type AttendanceRecord } from "@/lib/auth";
-import { getEvents, type SchoolEvent } from "@/data/events";
+import { getEvents, generateEventQrToken, type SchoolEvent } from "@/data/events";
 import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -29,7 +30,6 @@ const StudentDashboard = () => {
     setUser(session);
 
     const loadData = async () => {
-      setIsLoading(true);
       try {
         const [records, eventsData] = await Promise.all([
           getAttendanceRecords(),
@@ -38,7 +38,7 @@ const StudentDashboard = () => {
         
         // Filter personal history
         const personalHistory = records
-          .filter(r => r.id === session.studentId)
+          .filter(r => (r.studentId || r.id) === session.studentId)
           .sort((a, b) => b.timestamp - a.timestamp);
         setHistory(personalHistory);
 
@@ -55,7 +55,10 @@ const StudentDashboard = () => {
         setIsLoading(false);
       }
     };
+
     loadData();
+    const interval = setInterval(loadData, 30000); // Auto-refresh every 30s
+    return () => clearInterval(interval);
   }, [navigate]);
 
   const stats = useMemo(() => {
@@ -87,6 +90,16 @@ const StudentDashboard = () => {
   }, [history]);
 
 
+  const studentToken = useMemo(() => {
+    if (!user) return "";
+    return generateEventQrToken(
+      user.studentId,
+      `${user.firstName} ${user.lastName}`,
+      "EVT-GENERAL",
+      "General Attendance"
+    ).token;
+  }, [user]);
+
   if (!user || isLoading) {
     return (
       <DashboardLayout role="student">
@@ -97,14 +110,26 @@ const StudentDashboard = () => {
     );
   }
 
-  const studentToken = `ZDSPGC-STU-${user.studentId}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-
   return (
     <DashboardLayout role="student">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Student Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Welcome back, {user.firstName} {user.lastName}</p>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Student Dashboard</h1>
+            <p className="text-muted-foreground text-sm mt-1">Welcome back, {user.firstName} {user.lastName}</p>
+          </div>
+          {history.length > 0 && (
+            <div className="flex items-center gap-3 bg-success/5 border border-success/20 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="h-10 w-10 rounded-full bg-success/20 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="h-6 w-6 text-success" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase font-bold text-success tracking-wider leading-none mb-1">Last Recorded Scan</p>
+                <p className="text-sm font-bold text-foreground truncate">{history[0].eventName}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">{history[0].status} at {history[0].time} • {new Date(history[0].timestamp).toLocaleDateString()}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Stats */}
@@ -238,7 +263,7 @@ const StudentDashboard = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Day</TableHead>
+                  <TableHead>Event</TableHead>
                   <TableHead>Time In</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -250,7 +275,9 @@ const StudentDashboard = () => {
                       {new Date(row.timestamp).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      {new Date(row.timestamp).toLocaleDateString('en-US', { weekday: 'long' })}
+                      <Badge variant="outline" className="text-[10px] whitespace-nowrap bg-background">
+                        {row.eventName || "General Attendance"}
+                      </Badge>
                     </TableCell>
                     <TableCell>{row.time}</TableCell>
                     <TableCell>
