@@ -129,10 +129,10 @@ app.post('/api/register', async (req, res) => {
   try {
     await db.query(`
       INSERT INTO users (
-        studentId, firstName, lastName, middleName, suffix, email, 
-        course, yearLevel, section, gender, phone, birthday, 
-        address, city, province, zipCode, semester, schoolYear, 
-        enrollmentStatus, guardianName, guardianPhone, guardianRelation, 
+        studentid, firstname, lastname, middlename, suffix, email, 
+        course, yearlevel, section, gender, phone, birthday, 
+        address, city, province, zipcode, semester, schoolyear, 
+        enrollmentstatus, guardianname, guardianphone, guardianrelation, 
         role, password
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
@@ -230,7 +230,7 @@ app.put('/api/students/:id', async (req, res) => {
 
 app.delete('/api/students/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM users WHERE studentId = $1', [req.params.id]);
+    await db.query('DELETE FROM users WHERE studentid = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -421,7 +421,7 @@ app.post('/api/attendance', async (req, res) => {
   const r = req.body;
   try {
     const result = await db.query(`
-      INSERT INTO attendance (studentId, name, course, section, gender, time, status, eventId, eventName, timestamp)
+      INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
@@ -498,14 +498,14 @@ app.post('/api/migrate', async (req, res) => {
       for (const u of users) {
         await client.query(`
           INSERT INTO users (
-            studentId, firstName, lastName, middleName, suffix, email, 
-            course, yearLevel, section, gender, phone, birthday, 
-            address, city, province, zipCode, semester, schoolYear, 
-            enrollmentStatus, guardianName, guardianPhone, guardianRelation, 
+            studentid, firstname, lastname, middlename, suffix, email, 
+            course, yearlevel, section, gender, phone, birthday, 
+            address, city, province, zipcode, semester, schoolyear, 
+            enrollmentstatus, guardianname, guardianphone, guardianrelation, 
             role, password
           ) 
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
-          ON CONFLICT (studentId) DO NOTHING
+          ON CONFLICT (studentid) DO NOTHING
         `, [
           u.studentId, u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
           u.course, u.yearLevel, u.section, u.gender, u.phone || '', u.birthday || '',
@@ -545,7 +545,7 @@ app.post('/api/migrate', async (req, res) => {
       for (const r of attendance) {
         // No unique constraint besides ID, so just insert
         await client.query(`
-            INSERT INTO attendance (studentId, name, course, section, gender, time, status, eventId, eventName, timestamp) 
+            INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp) 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          `, [r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
       }
@@ -561,7 +561,7 @@ app.post('/api/migrate', async (req, res) => {
   }
 });
 
-app.get('/*', (req, res) => {
+app.get('(.*)', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
