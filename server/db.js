@@ -35,14 +35,14 @@ export const initDb = async () => {
   try {
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
-        studentId TEXT PRIMARY KEY,
-        firstName TEXT NOT NULL,
-        lastName TEXT NOT NULL,
-        middleName TEXT,
+        studentid TEXT PRIMARY KEY,
+        firstname TEXT NOT NULL,
+        lastname TEXT NOT NULL,
+        middlename TEXT,
         suffix TEXT,
         email TEXT,
         course TEXT NOT NULL,
-        yearLevel TEXT NOT NULL,
+        yearlevel TEXT NOT NULL,
         section TEXT NOT NULL,
         gender TEXT NOT NULL,
         phone TEXT,
@@ -50,13 +50,13 @@ export const initDb = async () => {
         address TEXT,
         city TEXT,
         province TEXT,
-        zipCode TEXT,
+        zipcode TEXT,
         semester TEXT,
-        schoolYear TEXT,
-        enrollmentStatus TEXT,
-        guardianName TEXT,
-        guardianPhone TEXT,
-        guardianRelation TEXT,
+        schoolyear TEXT,
+        enrollmentstatus TEXT,
+        guardianname TEXT,
+        guardianphone TEXT,
+        guardianrelation TEXT,
         role TEXT NOT NULL DEFAULT 'student',
         password TEXT NOT NULL
       );
@@ -86,31 +86,31 @@ export const initDb = async () => {
         location TEXT NOT NULL,
         description TEXT,
         category TEXT NOT NULL,
-        targetCourses TEXT, -- JSON string array
+        targetcourses TEXT, -- JSON string array
         status TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS attendance (
         id SERIAL PRIMARY KEY,
-        studentId TEXT NOT NULL,
+        studentid TEXT NOT NULL,
         name TEXT NOT NULL,
         course TEXT NOT NULL,
         section TEXT NOT NULL,
         gender TEXT NOT NULL,
         time TEXT NOT NULL,
         status TEXT NOT NULL,
-        eventId TEXT NOT NULL,
-        eventName TEXT NOT NULL,
+        eventid TEXT NOT NULL,
+        eventname TEXT NOT NULL,
         timestamp BIGINT NOT NULL,
-        FOREIGN KEY(studentId) REFERENCES users(studentId)
+        FOREIGN KEY(studentid) REFERENCES users(studentid)
       );
 
       CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY DEFAULT 1,
-        schoolName TEXT NOT NULL,
-        academicYear TEXT NOT NULL,
+        schoolname TEXT NOT NULL,
+        academicyear TEXT NOT NULL,
         semester TEXT NOT NULL,
-        lateThreshold TEXT NOT NULL,
+        latethreshold TEXT NOT NULL,
         CONSTRAINT one_row CHECK (id = 1)
       );
     `);
@@ -119,7 +119,7 @@ export const initDb = async () => {
     const settingsCheck = await db.query('SELECT 1 FROM settings WHERE id = 1');
     if (settingsCheck.rows.length === 0) {
       await db.query(`
-        INSERT INTO settings (id, schoolName, academicYear, semester, lateThreshold)
+        INSERT INTO settings (id, schoolname, academicyear, semester, latethreshold)
         VALUES (1, 'Zamboanga del Sur Provincial Government College', '2024-2025', '2nd', '08:30')
       `);
       console.log('Default system settings initialized');
