@@ -33,7 +33,7 @@ const db = new Pool(poolConfig);
 // Initialize database schema
 export const initDb = async () => {
   try {
-    // 1. Initial table creation for users
+    // 1. Ensure users table exists first
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         studentid TEXT PRIMARY KEY,
@@ -63,38 +63,59 @@ export const initDb = async () => {
       );
     `);
 
-    // 2. Migration: Ensure studentid is lowercase if it was created as studentId (quoted)
+    // 2. Aggressive Migration: Rename any PK that isn't lowercase "studentid"
     try {
-      await db.query('ALTER TABLE users RENAME COLUMN "studentId" TO studentid');
-      console.log('Migrated users table column "studentId" to "studentid"');
+      const pkCheck = await db.query(`
+        SELECT a.attname as colname
+        FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+        WHERE i.indrelid = 'users'::regclass AND i.indisprimary
+      `);
+      
+      if (pkCheck.rows.length > 0) {
+        const currentPk = pkCheck.rows[0].colname;
+        if (currentPk !== 'studentid') {
+          console.log(`Detected non-standard PK "${currentPk}" in users table. Renaming to "studentid"...`);
+          await db.query(`ALTER TABLE users RENAME COLUMN "${currentPk}" TO studentid`);
+        }
+      }
     } catch (e) {
-      // Ignore if column doesn't exist or already lowercase
+      console.log('Skip PK migration (table might not exist yet or other error)');
     }
 
-    // 3. Create other tables
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS admins (
+    // 3. Normalize other columns if they exist in mixed case
+    const columnsToFix = {
+      'firstName': 'firstname', 'lastName': 'lastname', 'middleName': 'middlename',
+      'yearLevel': 'yearlevel', 'zipCode': 'zipcode', 'schoolYear': 'schoolyear',
+      'enrollmentStatus': 'enrollmentstatus', 'guardianName': 'guardianname',
+      'guardianPhone': 'guardianphone', 'guardianRelation': 'guardianrelation'
+    };
+
+    for (const [oldName, newName] of Object.entries(columnsToFix)) {
+      try {
+        await db.query(`ALTER TABLE users RENAME COLUMN "${oldName}" TO ${newName}`);
+        console.log(`Renamed users column "${oldName}" to "${newName}"`);
+      } catch (e) { /* Column doesn't exist in that casing, ignore */ }
+    }
+
+    // 4. Create other tables one by one
+    const otherTables = [
+      `CREATE TABLE IF NOT EXISTS admins (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         role TEXT NOT NULL DEFAULT 'officer',
         password TEXT NOT NULL,
         createdat TEXT NOT NULL
-      );
-    `);
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS sections (
+      )`,
+      `CREATE TABLE IF NOT EXISTS sections (
         id SERIAL PRIMARY KEY,
         course TEXT NOT NULL,
         year TEXT NOT NULL,
         section TEXT NOT NULL,
         UNIQUE(course, year, section)
-      );
-    `);
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS events (
+      )`,
+      `CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         date TEXT NOT NULL,
@@ -104,11 +125,8 @@ export const initDb = async () => {
         category TEXT NOT NULL,
         targetcourses TEXT,
         status TEXT NOT NULL
-      );
-    `);
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS attendance (
+      )`,
+      `CREATE TABLE IF NOT EXISTS attendance (
         id SERIAL PRIMARY KEY,
         studentid TEXT NOT NULL,
         name TEXT NOT NULL,
@@ -121,21 +139,22 @@ export const initDb = async () => {
         eventname TEXT NOT NULL,
         timestamp BIGINT NOT NULL,
         FOREIGN KEY(studentid) REFERENCES users(studentid)
-      );
-    `);
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS settings (
+      )`,
+      `CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY DEFAULT 1,
         schoolname TEXT NOT NULL,
         academicyear TEXT NOT NULL,
         semester TEXT NOT NULL,
         latethreshold TEXT NOT NULL,
         CONSTRAINT one_row CHECK (id = 1)
-      );
-    `);
+      )`
+    ];
 
-    // Initialize default settings if missing
+    for (const query of otherTables) {
+      await db.query(query);
+    }
+
+    // 5. Initialize default settings if missing
     const settingsCheck = await db.query('SELECT 1 FROM settings WHERE id = 1');
     if (settingsCheck.rows.length === 0) {
       await db.query(`
@@ -145,7 +164,7 @@ export const initDb = async () => {
       console.log('Default system settings initialized');
     }
 
-    console.log('PostgreSQL Database schema initialized');
+    console.log('PostgreSQL Database schema initialized and migrated');
   } catch (err) {
     console.error('Error initializing database schema:', err);
     throw err;
