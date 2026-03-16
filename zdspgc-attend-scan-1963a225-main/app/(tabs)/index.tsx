@@ -18,9 +18,7 @@ export default function HomeScreen() {
     checkPermissions();
   }, [permission, requestPermission]);
 
-  const targetUri = Platform.OS === 'web'
-    ? 'http://localhost:3005'
-    : 'http://10.198.116.139:3005'; // Use http for local development
+  const targetUri = 'https://zspgc-attend-scan-1963a225-main-2.onrender.com';
 
   const onBarcodeScanned = (result: BarcodeScanningResult) => {
     if (useNativeScanner && webViewRef.current) {
