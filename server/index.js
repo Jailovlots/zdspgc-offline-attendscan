@@ -589,6 +589,6 @@ app.post('/api/migrate', async (req, res) => {
   }
 });
 
-app.get('https://zspgc-attend-scan-1963a225-main-6.onrender.com', (req, res) = res.sendFile(path.join(__dirname, '../dist/index.html')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, '../dist/index.html')));
 
 // Remove the bottom app.listen as it's now inside startServer
