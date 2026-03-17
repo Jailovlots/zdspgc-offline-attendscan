@@ -1,3 +1,5 @@
+import { API_URL } from "@/lib/config";
+
 export interface SchoolEvent {
   id: string;
   name: string;
@@ -82,14 +84,14 @@ const DEFAULT_EVENTS: SchoolEvent[] = [
 ];
 
 export const getEvents = async (): Promise<SchoolEvent[]> => {
-  const res = await fetch('/api/events');
+  const res = await fetch(`${API_URL}/api/events`);
   if (!res.ok) return DEFAULT_EVENTS;
   const events = await res.json();
   return events.length > 0 ? events : DEFAULT_EVENTS;
 };
 
 export const saveEvent = async (event: SchoolEvent) => {
-  const res = await fetch('/api/events', {
+  const res = await fetch(`${API_URL}/api/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(event)
@@ -98,7 +100,7 @@ export const saveEvent = async (event: SchoolEvent) => {
 };
 
 export const deleteEvent = async (eventId: string) => {
-  const res = await fetch(`/api/events/${eventId}`, {
+  const res = await fetch(`${API_URL}/api/events/${eventId}`, {
     method: 'DELETE'
   });
   return res.ok;

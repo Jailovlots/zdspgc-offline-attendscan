@@ -1,3 +1,4 @@
+import { API_URL } from "./config";
 
 export interface StudentUser {
   studentId: string;
@@ -52,7 +53,7 @@ export const logout = () => {
 // --- Backend API Integration ---
 
 export const loginUser = async (loginId: string, password: string, role: string): Promise<StudentUser | null> => {
-  const res = await fetch('/api/login', {
+  const res = await fetch(`${API_URL}/api/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ loginId, password, role })
@@ -64,17 +65,17 @@ export const loginUser = async (loginId: string, password: string, role: string)
 };
 
 export const getAllStudents = async (): Promise<StudentUser[]> => {
-  const res = await fetch('/api/students');
+  const res = await fetch(`${API_URL}/api/students`);
   return res.ok ? await res.json() : [];
 };
 
 export const getStudentProfile = async (id: string): Promise<StudentUser | null> => {
-  const res = await fetch(`/api/students/${id}`);
+  const res = await fetch(`${API_URL}/api/students/${id}`);
   return res.ok ? await res.json() : null;
 };
 
 export const saveUser = async (user: StudentUser) => {
-  const res = await fetch('/api/register', {
+  const res = await fetch(`${API_URL}/api/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(user)
@@ -83,7 +84,7 @@ export const saveUser = async (user: StudentUser) => {
 };
 
 export const updateStudent = async (id: string, user: StudentUser): Promise<{ ok: boolean; error?: string }> => {
-  const res = await fetch(`/api/students/${id}`, {
+  const res = await fetch(`${API_URL}/api/students/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(user)
@@ -94,7 +95,7 @@ export const updateStudent = async (id: string, user: StudentUser): Promise<{ ok
 };
 
 export const deleteUser = async (studentId: string) => {
-  const res = await fetch(`/api/students/${studentId}`, {
+  const res = await fetch(`${API_URL}/api/students/${studentId}`, {
     method: 'DELETE'
   });
   return res.ok;
@@ -112,12 +113,12 @@ export interface AdminUser {
 }
 
 export const getAllAdmins = async (): Promise<AdminUser[]> => {
-  const res = await fetch('/api/admins');
+  const res = await fetch(`${API_URL}/api/admins`);
   return res.ok ? await res.json() : [];
 };
 
 export const createAdmin = async (admin: Omit<AdminUser, 'id' | 'createdAt'>): Promise<{ ok: boolean; data?: AdminUser; error?: string }> => {
-  const res = await fetch('/api/admins', {
+  const res = await fetch(`${API_URL}/api/admins`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(admin)
@@ -127,7 +128,7 @@ export const createAdmin = async (admin: Omit<AdminUser, 'id' | 'createdAt'>): P
 };
 
 export const updateAdmin = async (id: number, admin: Partial<AdminUser>): Promise<{ ok: boolean; error?: string }> => {
-  const res = await fetch(`/api/admins/${id}`, {
+  const res = await fetch(`${API_URL}/api/admins/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(admin)
@@ -137,19 +138,19 @@ export const updateAdmin = async (id: number, admin: Partial<AdminUser>): Promis
 };
 
 export const deleteAdmin = async (id: number): Promise<boolean> => {
-  const res = await fetch(`/api/admins/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${API_URL}/api/admins/${id}`, { method: 'DELETE' });
   return res.ok;
 };
 
 // --- Sections ---
 
 export const getCourseSections = async (): Promise<Record<string, Record<string, string[]>>> => {
-  const res = await fetch('/api/sections');
+  const res = await fetch(`${API_URL}/api/sections`);
   return res.ok ? await res.json() : {};
 };
 
 export const saveCourseSections = async (sections: Record<string, Record<string, string[]>>) => {
-  const res = await fetch('/api/sections/bulk', {
+  const res = await fetch(`${API_URL}/api/sections/bulk`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(sections)
@@ -158,7 +159,7 @@ export const saveCourseSections = async (sections: Record<string, Record<string,
 };
 
 export const saveSection = async (course: string, year: string, section: string) => {
-  const res = await fetch('/api/sections', {
+  const res = await fetch(`${API_URL}/api/sections`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ course, year, section })
@@ -167,7 +168,7 @@ export const saveSection = async (course: string, year: string, section: string)
 };
 
 export const deleteSection = async (course: string, year: string, section: string) => {
-  const res = await fetch('/api/sections', {
+  const res = await fetch(`${API_URL}/api/sections`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ course, year, section })
@@ -176,7 +177,7 @@ export const deleteSection = async (course: string, year: string, section: strin
 };
 
 export const renameSectionItem = async (oldName: string, newName: string, type: 'course' | 'section', course?: string, year?: string) => {
-  const res = await fetch('/api/sections/rename', {
+  const res = await fetch(`${API_URL}/api/sections/rename`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ oldName, newName, type, course, year })
@@ -201,12 +202,12 @@ export interface AttendanceRecord {
 }
 
 export const getAttendanceRecords = async (): Promise<AttendanceRecord[]> => {
-  const res = await fetch('/api/attendance');
+  const res = await fetch(`${API_URL}/api/attendance`);
   return res.ok ? await res.json() : [];
 };
 
 export const saveAttendanceRecord = async (record: AttendanceRecord) => {
-  const res = await fetch('/api/attendance', {
+  const res = await fetch(`${API_URL}/api/attendance`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(record)
@@ -215,14 +216,14 @@ export const saveAttendanceRecord = async (record: AttendanceRecord) => {
 };
 
 export const clearAttendanceRecords = async () => {
-  const res = await fetch('/api/attendance/clear', {
+  const res = await fetch(`${API_URL}/api/attendance/clear`, {
     method: 'DELETE'
   });
   return res.ok;
 };
 
 export const deleteAttendanceRecords = async (ids: (string | number)[]) => {
-  const res = await fetch('/api/attendance/bulk', {
+  const res = await fetch(`${API_URL}/api/attendance/bulk`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids })
@@ -231,13 +232,13 @@ export const deleteAttendanceRecords = async (ids: (string | number)[]) => {
 };
 
 export const getSystemSettings = async () => {
-  const res = await fetch('/api/settings');
+  const res = await fetch(`${API_URL}/api/settings`);
   if (res.ok) return await res.json();
   return null;
 };
 
 export const updateSystemSettings = async (settings: any) => {
-  const res = await fetch('/api/settings', {
+  const res = await fetch(`${API_URL}/api/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings)
@@ -260,7 +261,7 @@ export const migrateLocalStorageToServer = async () => {
   }
 
   console.log("Migrating data to server...");
-  const res = await fetch('/api/migrate', {
+  const res = await fetch(`${API_URL}/api/migrate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ users, sections, events, attendance })
