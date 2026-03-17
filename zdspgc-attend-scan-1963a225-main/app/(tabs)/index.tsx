@@ -18,7 +18,7 @@ export default function HomeScreen() {
     checkPermissions();
   }, [permission, requestPermission]);
 
-  const targetUri = '';
+  const targetUri = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
 
   const onBarcodeScanned = (result: BarcodeScanningResult) => {
     if (useNativeScanner && webViewRef.current) {
