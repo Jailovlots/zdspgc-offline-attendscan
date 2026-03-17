@@ -22,8 +22,12 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get('/disk/index.html', (req, res) => {
-  res.send('API is running');
+app.get('/api', (req, res) => {
+  res.json({ message: 'API is running' });
+});
+
+app.get('https://zspgc-attend-scan-1963a225-main-6.onrender.com', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 // Initialize Database
@@ -585,8 +589,6 @@ app.post('/api/migrate', async (req, res) => {
   }
 });
 
-app.get('/disk/index.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
-});
+app.get('https://zspgc-attend-scan-1963a225-main-6.onrender.com', (req, res) = res.sendFile(path.join(__dirname, '../dist/index.html')));
 
 // Remove the bottom app.listen as it's now inside startServer
