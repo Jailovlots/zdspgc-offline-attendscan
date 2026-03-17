@@ -13,6 +13,16 @@ import { getEvents, parseEventQrToken, type SchoolEvent } from "@/data/events";
 import { getAllStudents, getSession, getAttendanceRecords, saveAttendanceRecord, clearAttendanceRecords, deleteAttendanceRecords, getSystemSettings, type AttendanceRecord, type StudentUser } from "@/lib/auth";
 import { Checkbox } from "@/components/ui/checkbox";
 import { exportToCsv } from "@/lib/exportUtils";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 
@@ -54,6 +64,9 @@ const AdminScanner = () => {
   const [systemSettings, setSystemSettings] = useState({ lateThreshold: "08:30" });
   const [selectedIds, setSelectedIds] = useState<Set<number | string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearMode, setClearMode] = useState<'selected' | 'all'>('all');
 
   useEffect(() => {
     if (!session || session.role !== "admin") {
@@ -480,9 +493,42 @@ const AdminScanner = () => {
                     variant="ghost"
                     size="sm"
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={async () => {
+                    onClick={() => {
                       if (selectedIds.size > 0) {
-                        if (confirm(`Are you sure you want to delete ${selectedIds.size} selected records?`)) {
+                        setClearMode('selected');
+                        setShowClearConfirm(true);
+                      } else {
+                        setClearMode('all');
+                        setShowClearConfirm(true);
+                      }
+                    }}
+                  >
+                    {selectedIds.size > 0 ? `Clear Selected (${selectedIds.size})` : "Clear All"}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {clearMode === 'all' ? 'Clear All Records?' : 'Clear Selected Records?'}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {clearMode === 'all' 
+                      ? 'This will permanently delete ALL attendance records from the server. This action cannot be undone.'
+                      : `This will permanently delete the ${selectedIds.size} selected attendance records from the server.`}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      setIsDeleting(true);
+                      try {
+                        if (clearMode === 'selected') {
                           const idsToDelete = Array.from(selectedIds);
                           const success = await deleteAttendanceRecords(idsToDelete);
                           if (success) {
@@ -493,9 +539,7 @@ const AdminScanner = () => {
                           } else {
                             toast.error("Failed to delete selected records");
                           }
-                        }
-                      } else {
-                        if (confirm("Are you sure you want to clear all records? This will delete them from the server.")) {
+                        } else {
                           const success = await clearAttendanceRecords();
                           if (success) {
                             setScannedRecords([]);
@@ -507,14 +551,19 @@ const AdminScanner = () => {
                             toast.error("Failed to clear records");
                           }
                         }
+                      } finally {
+                        setIsDeleting(false);
+                        setShowClearConfirm(false);
                       }
-                    }}
+                    }} 
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled={isDeleting}
                   >
-                    {selectedIds.size > 0 ? `Clear Selected (${selectedIds.size})` : "Clear All"}
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
+                    {isDeleting ? "Deleting..." : "Clear"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <CardContent>
               <Table>
                 <TableHeader>

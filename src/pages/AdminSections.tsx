@@ -25,6 +25,16 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getCourseSections, saveCourseSections } from "@/lib/auth";
 import { toast } from "sonner";
@@ -55,6 +65,14 @@ const AdminSections = () => {
 
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+
+    // Generic Delete State
+    const [deleteConfig, setDeleteConfig] = useState<{
+        type: 'section' | 'course' | 'yearLevel',
+        course: string,
+        year?: string,
+        section?: string
+    } | null>(null);
 
     useEffect(() => {
         const init = async () => {
@@ -88,11 +106,29 @@ const AdminSections = () => {
     };
 
     const handleDeleteSection = (course: string, year: string, section: string) => {
-        if (confirm(`Remove section ${section}?`)) {
-            const updated = { ...courseSections };
+        setDeleteConfig({ type: 'section', course, year, section });
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteConfig) return;
+        const { type, course, year, section } = deleteConfig;
+        const updated = { ...courseSections };
+
+        if (type === 'section' && year && section) {
             updated[course][year] = updated[course][year].filter(s => s !== section);
-            handleSave(updated);
+            await handleSave(updated);
+            toast.success(`Removed section ${section}`);
+        } else if (type === 'course') {
+            delete updated[course];
+            await handleSave(updated);
+            toast.success(`Course ${course} removed`);
+        } else if (type === 'yearLevel' && year) {
+            delete updated[course][year];
+            await handleSave(updated);
+            toast.success(`Removed ${year}`);
         }
+
+        setDeleteConfig(null);
     };
 
     const handleAddCourse = () => {
@@ -116,12 +152,7 @@ const AdminSections = () => {
     };
 
     const handleDeleteCourse = (course: string) => {
-        if (confirm(`Are you sure you want to delete ${course}? All associated year levels and sections will be completely removed.`)) {
-            const updated = { ...courseSections };
-            delete updated[course];
-            handleSave(updated);
-            toast.success(`Course ${course} removed`);
-        }
+        setDeleteConfig({ type: 'course', course });
     };
 
     const handleAddYearLevel = () => {
@@ -148,12 +179,7 @@ const AdminSections = () => {
 
     const handleDeleteYearLevel = (course: string, year: string, e: React.MouseEvent) => {
         e.stopPropagation(); // prevent opening accordion
-        if (confirm(`Are you sure you want to delete ${year} from ${course}? All sections inside it will be lost.`)) {
-            const updated = { ...courseSections };
-            delete updated[course][year];
-            handleSave(updated);
-            toast.success(`Removed ${year}`);
-        }
+        setDeleteConfig({ type: 'yearLevel', course, year });
     };
 
     const handleAddSection = (course: string, year: string) => {
@@ -518,6 +544,32 @@ const AdminSections = () => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Global Delete Confirmation */}
+            <AlertDialog open={!!deleteConfig} onOpenChange={(o) => !o && setDeleteConfig(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            {deleteConfig?.type === 'course' ? 'Delete Course?' : 
+                             deleteConfig?.type === 'yearLevel' ? 'Delete Year Level?' : 
+                             'Remove Section?'}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteConfig?.type === 'course' 
+                                ? `Are you sure you want to delete ${deleteConfig.course}? All associated year levels and sections will be completely removed.` 
+                                : deleteConfig?.type === 'yearLevel'
+                                ? `Are you sure you want to delete ${deleteConfig.year} from ${deleteConfig.course}? All sections inside it will be lost.`
+                                : `Remove section ${deleteConfig?.section} from ${deleteConfig?.year}?`}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </DashboardLayout>
     );
 };

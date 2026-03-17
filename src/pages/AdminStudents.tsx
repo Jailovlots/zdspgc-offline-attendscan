@@ -21,7 +21,23 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent } from "@/lib/auth";
 import { toast } from "sonner";
@@ -37,6 +53,7 @@ const AdminStudents = () => {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editingStudent, setEditingStudent] = useState<StudentUser | null>(null);
+    const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
     // Form State
     const [formData, setFormData] = useState<Partial<StudentUser>>({
@@ -110,16 +127,20 @@ const AdminStudents = () => {
         setIsAddDialogOpen(true);
     };
 
-    const handleDeleteClick = async (studentId: string) => {
-        if (confirm("Are you sure you want to delete this student?")) {
-            const success = await deleteUser(studentId);
-            if (success) {
-                loadStudents();
-                toast.success("Student deleted successfully");
-            } else {
-                toast.error("Failed to delete student");
-            }
+    const handleDeleteClick = (studentId: string) => {
+        setDeleteTargetId(studentId);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTargetId) return;
+        const success = await deleteUser(deleteTargetId);
+        if (success) {
+            await loadStudents();
+            toast.success("Student deleted successfully");
+        } else {
+            toast.error("Failed to delete student");
         }
+        setDeleteTargetId(null);
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -410,6 +431,24 @@ const AdminStudents = () => {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation */}
+            <AlertDialog open={!!deleteTargetId} onOpenChange={(o) => !o && setDeleteTargetId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Student Record?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently remove the student and their access to the app. Existing attendance records will remain but will no longer link to a profile.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </DashboardLayout>
     );
 };

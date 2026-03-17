@@ -23,6 +23,16 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getEvents, saveEvent, deleteEvent, SchoolEvent } from "@/data/events";
 import { getCourseSections } from "@/lib/auth";
@@ -38,6 +48,7 @@ const AdminEvents = () => {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [editingEvent, setEditingEvent] = useState<SchoolEvent | null>(null);
+    const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
     const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
     const COURSES = useMemo(() => Object.keys(courseSections).sort(), [courseSections]);
 
@@ -113,16 +124,20 @@ const AdminEvents = () => {
         setIsAddDialogOpen(true);
     };
 
-    const handleDeleteClick = async (eventId: string) => {
-        if (confirm("Are you sure you want to delete this event? This may affect existing attendance records.")) {
-            const success = await deleteEvent(eventId);
-            if (success) {
-                await loadEvents();
-                toast.success("Event deleted successfully");
-            } else {
-                toast.error("Failed to delete event");
-            }
+    const handleDeleteClick = (eventId: string) => {
+        setDeleteTargetId(eventId);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTargetId) return;
+        const success = await deleteEvent(deleteTargetId);
+        if (success) {
+            await loadEvents();
+            toast.success("Event deleted successfully");
+        } else {
+            toast.error("Failed to delete event");
         }
+        setDeleteTargetId(null);
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -439,6 +454,24 @@ const AdminEvents = () => {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation */}
+            <AlertDialog open={!!deleteTargetId} onOpenChange={(o) => !o && setDeleteTargetId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Event?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete this event? This may affect existing attendance records and will be permanent.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </DashboardLayout>
     );
 };
