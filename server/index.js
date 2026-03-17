@@ -26,9 +26,6 @@ app.get('/api', (req, res) => {
   res.json({ message: 'API is running' });
 });
 
-app.get('https://zspgc-attend-scan-1963a225-main-6.onrender.com', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
-});
 
 // Initialize Database
 const startServer = async () => {
@@ -451,7 +448,7 @@ app.post('/api/attendance', async (req, res) => {
     const result = await db.query(`
       INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING /
+      RETURNING *
     `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
     res.json(mapAttendance(result.rows[0]));
   } catch (err) {
@@ -589,6 +586,6 @@ app.post('/api/migrate', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, '../dist/index.html')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../dist/index.html')));
 
 // Remove the bottom app.listen as it's now inside startServer
