@@ -164,6 +164,36 @@ export const initDb = async () => {
       console.log('Default system settings initialized');
     }
 
+    // 6. Automated Admin Seeding
+    const adminEmail = 'admin@zdspgc.edu.ph';
+    const adminPassword = 'admin123';
+    const adminName = 'System Admin';
+    const adminRole = 'superadmin';
+
+    console.log('Checking for existing admin accounts...');
+    const adminCheck = await db.query('SELECT * FROM admins WHERE email = $1', [adminEmail]);
+    if (adminCheck.rows.length === 0) {
+      console.log('Seeding default superadmin account...');
+      await db.query(`
+        INSERT INTO admins (name, email, role, password, createdat)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [adminName, adminEmail, adminRole, adminPassword, new Date().toISOString()]);
+      console.log('Admin account created successfully!');
+    }
+
+    // Ensure admin also exists in users table for backward compatibility/unified login
+    const userCheck = await db.query('SELECT * FROM users WHERE email = $1', [adminEmail]);
+    if (userCheck.rows.length === 0) {
+      console.log('Creating admin in users table for unified access...');
+      await db.query(`
+        INSERT INTO users (
+          studentid, firstname, lastname, email, course, yearlevel, section, gender, role, password
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `, ['ADMIN-001', 'System', 'Admin', adminEmail, 'N/A', 'N/A', 'N/A', 'Male', 'admin', adminPassword]);
+      console.log('Admin added to users table.');
+    }
+
     console.log('PostgreSQL Database schema initialized and migrated');
   } catch (err) {
     console.error('Error initializing database schema:', err);

@@ -112,7 +112,7 @@ app.post('/api/login', async (req, res) => {
     if (role === 'admin') {
       // Check dedicated admins table first
       const adminResult = await db.query(
-        'SELECT * FROM admins WHERE email = $1 AND password = $2',
+        'SELECT * FROM admins WHERE LOWER(email) = LOWER($1) AND password = $2',
         [loginId, password]
       );
       if (adminResult.rows.length > 0) {
@@ -138,7 +138,7 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid admin credentials' });
     } else {
       const userResult = await db.query(
-        'SELECT * FROM users WHERE email = $1 AND password = $2 AND role = $3',
+        'SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND password = $2 AND role = $3',
         [loginId, password, 'student']
       );
       if (userResult.rows.length > 0) return res.json(mapUser(userResult.rows[0]));
