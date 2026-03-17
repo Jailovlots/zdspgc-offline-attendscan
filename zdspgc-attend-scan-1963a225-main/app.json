@@ -3,10 +3,6 @@
     "name": "zdspgc-attend-scan-1963a225-main",
     "slug": "zdspgc-attend-scan-1963a225-main",
     "version": "1.0.0",
-    "platforms": [
-      "ios",
-      "android"
-    ],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "zdspgcattendscan1963a225main",
