@@ -54,6 +54,7 @@
     "date-fns": "^3.6.0",
     "dotenv": "^17.3.1",
     "embla-carousel-react": "^8.6.0",
+    "expo": "^50.0.21",
     "express": "^5.2.1",
     "html5-qrcode": "^2.3.8",
     "input-otp": "^1.4.2",
