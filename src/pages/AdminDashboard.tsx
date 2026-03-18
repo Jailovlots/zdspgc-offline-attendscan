@@ -74,6 +74,13 @@ const AdminDashboard = () => {
     init();
   }, [selectedDate]);
 
+  // Pre-compute user map for O(1) lookups instead of O(N*M) loops
+  const userMap = useMemo(() => {
+    const map = new Map<string, StudentUser>();
+    registeredUsers.forEach(u => map.set(u.studentId, u));
+    return map;
+  }, [registeredUsers]);
+
   // Calculate dynamic section metrics from real users
   const sectionMetrics = useMemo(() => {
     const metrics: Record<string, SectionEntry> = {};
@@ -100,8 +107,7 @@ const AdminDashboard = () => {
 
     // Count scans
     attendanceRecords.forEach(r => {
-      const sId = r.studentId;
-      const student = registeredUsers.find(u => u.studentId === sId);
+      const student = userMap.get(r.studentId);
       if (student && metrics[student.section]) {
         if (r.status === "Present") {
           metrics[student.section].present++;
@@ -128,7 +134,7 @@ const AdminDashboard = () => {
     });
 
     return Object.values(metrics);
-  }, [registeredUsers, attendanceRecords]);
+  }, [registeredUsers, attendanceRecords, userMap]);
 
   const filteredSections = useMemo(
     () => selectedCourse === "All" ? sectionMetrics : sectionMetrics.filter((s) => s.course === selectedCourse),
@@ -171,20 +177,20 @@ const AdminDashboard = () => {
     const femaleTotal = courseUsers.filter(u => u.gender === "Female").length;
 
     const maleAttended = attendanceRecords.filter(r => {
-      const student = courseUsers.find(u => u.studentId === r.studentId);
-      return student?.gender === "Male";
+      const student = userMap.get(r.studentId);
+      return student && student.course === (selectedCourse === "All" ? student.course : selectedCourse) && student.gender === "Male";
     }).length;
 
     const femaleAttended = attendanceRecords.filter(r => {
-      const student = courseUsers.find(u => u.studentId === r.studentId);
-      return student?.gender === "Female";
+      const student = userMap.get(r.studentId);
+      return student && student.course === (selectedCourse === "All" ? student.course : selectedCourse) && student.gender === "Female";
     }).length;
 
     return {
       male: { total: maleTotal, attended: maleAttended },
       female: { total: femaleTotal, attended: femaleAttended }
     };
-  }, [registeredUsers, attendanceRecords, selectedCourse]);
+  }, [registeredUsers, attendanceRecords, selectedCourse, userMap]);
 
   const genderPieData = useMemo(() => [
     { name: "Male", value: genderStats.male.attended, color: "hsl(217, 91%, 60%)" },
@@ -204,7 +210,7 @@ const AdminDashboard = () => {
 
   const filteredScans = useMemo(() => {
     let scans = attendanceRecords.map(r => {
-      const student = registeredUsers.find(u => u.studentId === r.studentId);
+      const student = userMap.get(r.studentId);
       return {
         id: r.studentId,
         name: r.name,
@@ -233,7 +239,7 @@ const AdminDashboard = () => {
       );
     }
     return scans;
-  }, [attendanceRecords, registeredUsers, selectedCourse, searchQuery, statusFilter]);
+  }, [attendanceRecords, selectedCourse, searchQuery, statusFilter, userMap]);
 
   // Group filtered scans by course → year → section
   const groupedScans = useMemo(() => {

@@ -292,6 +292,12 @@ app.put('/api/students/:id', async (req, res) => {
 
 app.delete('/api/students/:id', async (req, res) => {
   try {
+    // The frontend specifies that attendance records should remain even if the student is deleted.
+    // Drop the strict foreign key constraint so we can orphan the attendance records gracefully.
+    try {
+      await db.query('ALTER TABLE attendance DROP CONSTRAINT IF EXISTS attendance_studentid_fkey');
+    } catch(e) { /* ignore if already dropped or wrong name */ }
+
     await db.query('DELETE FROM users WHERE studentid = $1', [req.params.id]);
     studentsCache.data = null; // Invalidate cache
     res.json({ success: true });
