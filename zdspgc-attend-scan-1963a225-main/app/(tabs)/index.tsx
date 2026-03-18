@@ -1,6 +1,6 @@
 import { useCameraPermissions, CameraView, BarcodeScanningResult } from 'expo-camera';
 import React, { useRef, useState } from 'react';
-import { Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 export default function HomeScreen() {
@@ -8,6 +8,8 @@ export default function HomeScreen() {
   const [useNativeScanner, setUseNativeScanner] = useState(false);
   const [bridgeReady, setBridgeReady] = useState(false);
   const webViewRef = useRef<WebView>(null);
+
+  const targetUri = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
 
   React.useEffect(() => {
     const checkPermissions = async () => {
@@ -18,7 +20,18 @@ export default function HomeScreen() {
     checkPermissions();
   }, [permission, requestPermission]);
 
-  const targetUri = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
+  React.useEffect(() => {
+    const checkServer = async () => {
+      try {
+        const res = await fetch(`${targetUri}/api/health`);
+        const data = await res.json();
+      } catch (error) {
+        console.log("Error:", error);
+        Alert.alert("Network error, please try again");
+      }
+    };
+    checkServer();
+  }, []);
 
   const onBarcodeScanned = (result: BarcodeScanningResult) => {
     if (useNativeScanner && webViewRef.current) {

@@ -15,7 +15,18 @@ const PORT = process.env.PORT || 3002;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../dist')));
+// Serve static frontend files with CDN/Browser caching enabled
+app.use(express.static(path.join(__dirname, '../dist'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      // Don't cache index.html so frontend updates apply immediately
+      res.setHeader('Cache-Control', 'no-cache');
+    } else {
+      // Cache JS, CSS, and images for 1 year (CDN standard)
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+  }
+}));
 
 // Health check route - helps Render verify the service is up immediately
 app.get('/api/health', (req, res) => {
@@ -179,10 +190,36 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+let studentsCache = {
+  data: null,
+  timestamp: 0
+};
+const CACHE_TTL = 60 * 1000; // 1 minute
+
 app.get('/api/students', async (req, res) => {
   try {
-    const studentsResult = await db.query('SELECT * FROM users WHERE role = $1', ['student']);
-    res.json(studentsResult.rows.map(mapUser));
+    const { page, limit } = req.query;
+    let students = [];
+    const now = Date.now();
+
+    if (studentsCache.data && (now - studentsCache.timestamp < CACHE_TTL)) {
+      students = studentsCache.data;
+    } else {
+      const studentsResult = await db.query('SELECT * FROM users WHERE role = $1', ['student']);
+      students = studentsResult.rows.map(mapUser);
+      studentsCache.data = students;
+      studentsCache.timestamp = now;
+    }
+
+    if (page && limit) {
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+      const startIndex = (pageNum - 1) * limitNum;
+      const endIndex = pageNum * limitNum;
+      students = students.slice(startIndex, endIndex);
+    }
+
+    res.json(students);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -191,7 +228,7 @@ app.get('/api/students', async (req, res) => {
 app.get('/api/students/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const userResult = await db.query('SELECT * FROM users WHERE studentid = $1', [id]);
+    const userResult = await db.query('SELECT id, name FROM students WHERE studentId = $1', [id]);
     if (userResult.rows.length > 0) {
       res.json(mapUser(userResult.rows[0]));
     } else {
@@ -256,6 +293,7 @@ app.put('/api/students/:id', async (req, res) => {
 app.delete('/api/students/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM users WHERE studentid = $1', [req.params.id]);
+    studentsCache.data = null; // Invalidate cache
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

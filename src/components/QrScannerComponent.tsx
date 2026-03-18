@@ -104,7 +104,8 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
         fps: 20, // Increased for smoother scanning
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const qrboxSize = Math.floor(minEdge * 0.7);
+          // Clamp the qrbox dimension to at least 50px to prevent the runtime error
+          const qrboxSize = Math.max(50, Math.floor(minEdge * 0.7));
           return { width: qrboxSize, height: qrboxSize };
         },
         aspectRatio: 1.0,
