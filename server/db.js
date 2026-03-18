@@ -140,6 +140,13 @@ export const initDb = async () => {
         timestamp BIGINT NOT NULL,
         FOREIGN KEY(studentid) REFERENCES users(studentid)
       )`,
+      `CREATE TABLE IF NOT EXISTS courses (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_attendance_studentid ON attendance(studentid)`,
+      `CREATE INDEX IF NOT EXISTS idx_attendance_eventid ON attendance(eventid)`,
+      `CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)`,
       `CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY DEFAULT 1,
         schoolname TEXT NOT NULL,
@@ -192,6 +199,16 @@ export const initDb = async () => {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       `, ['ADMIN-001', 'System', 'Admin', adminEmail, 'N/A', 'N/A', 'N/A', 'Male', 'admin', adminPassword]);
       console.log('Admin added to users table.');
+    }
+
+    // 7. Seed initial courses if empty
+    const courseCheck = await db.query('SELECT 1 FROM courses LIMIT 1');
+    if (courseCheck.rows.length === 0) {
+      const initialCourses = ['BSIS', 'ACT', 'BSCS', 'BSHM', 'BSED', 'BEED'];
+      for (const course of initialCourses) {
+        await db.query('INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [course]);
+      }
+      console.log('Initial courses seeded.');
     }
 
     console.log('PostgreSQL Database schema initialized and migrated');

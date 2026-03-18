@@ -315,8 +315,15 @@ app.delete('/api/admins/:id', async (req, res) => {
 // --- Sections Routes ---
 app.get('/api/sections', async (req, res) => {
   try {
+    const coursesResult = await db.query('SELECT name FROM courses');
     const sectionsResult = await db.query('SELECT * FROM sections');
+    
     const grouped = {};
+    // Initialize all courses even if they have no sections
+    coursesResult.rows.forEach(c => {
+      grouped[c.name] = {};
+    });
+
     sectionsResult.rows.forEach(s => {
       if (!grouped[s.course]) grouped[s.course] = {};
       if (!grouped[s.course][s.year]) grouped[s.course][s.year] = [];
@@ -331,6 +338,7 @@ app.get('/api/sections', async (req, res) => {
 app.post('/api/sections', async (req, res) => {
   const { course, year, section } = req.body;
   try {
+    await db.query('INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [course]);
     await db.query('INSERT INTO sections (course, year, section) VALUES ($1, $2, $3)', [course, year, section]);
     res.json({ success: true });
   } catch (err) {
@@ -343,9 +351,24 @@ app.post('/api/sections/bulk', async (req, res) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // We don't wipe everything if we want to keep course names
+    // but the frontend sends the whole state, so we update
+    
+    // 1. Get current courses and sections
     await client.query('DELETE FROM sections');
+    
+    // We only delete courses that are no longer in the provided 'sections' object
+    const providedCourses = Object.keys(sections);
+    if (providedCourses.length > 0) {
+      await client.query('DELETE FROM courses WHERE name NOT IN (' + providedCourses.map((_, i) => `$${i+1}`).join(',') + ')', providedCourses);
+    } else {
+      await client.query('DELETE FROM courses');
+    }
 
     for (const [course, years] of Object.entries(sections)) {
+      // Ensure course exists
+      await client.query('INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [course]);
+      
       for (const [year, sctns] of Object.entries(years)) {
         for (const s of sctns) {
           await client.query('INSERT INTO sections (course, year, section) VALUES ($1, $2, $3)', [course, year, s]);
@@ -377,6 +400,7 @@ app.put('/api/sections/rename', async (req, res) => {
   const { oldName, newName, type, course, year } = req.body;
   try {
     if (type === 'course') {
+      await db.query('UPDATE courses SET name = $1 WHERE name = $2', [newName, oldName]);
       await db.query('UPDATE sections SET course = $1 WHERE course = $2', [newName, oldName]);
     } else if (type === 'section') {
       await db.query('UPDATE sections SET section = $1 WHERE section = $2 AND course = $3 AND year = $4', [newName, oldName, course, year]);
