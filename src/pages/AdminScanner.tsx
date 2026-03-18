@@ -239,25 +239,9 @@ const AdminScanner = () => {
       const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-      let status: "Present" | "Late" = "Present";
-
-      if (event && event.time) {
-        const eventStartMinutes = parseTimeStringToMinutes(event.time);
-        if (eventStartMinutes !== null) {
-          // Grace period: mark as Late ONLY if more than 15 minutes past start
-          if (currentMinutes > eventStartMinutes + 15) {
-            status = "Late";
-          }
-        } else {
-          // Fallback if time format is unparseable
-          const thresholdMinutes = parseTimeStringToMinutes(systemSettings.lateThreshold) || 480; // Default 8:00 AM
-          status = currentMinutes >= thresholdMinutes ? "Late" : "Present";
-        }
-      } else {
-        // Fallback for General Attendance
-        const thresholdMinutes = parseTimeStringToMinutes(systemSettings.lateThreshold) || 480;
-        status = currentMinutes >= thresholdMinutes ? "Late" : "Present";
-      }
+      // Strictly enforce the global Admin Late Threshold for all scans
+      const thresholdMinutes = parseTimeStringToMinutes(systemSettings.lateThreshold) || 480; // Default 8:00 AM
+      const status: "Present" | "Late" = currentMinutes >= thresholdMinutes ? "Late" : "Present";
 
       const student = studentId ? findStudent(studentId) : null;
 
