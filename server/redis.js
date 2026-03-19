@@ -3,8 +3,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const redisUrl = process.env.REDIS_URL ? process.env.REDIS_URL.replace(/^redis:\/\//, "rediss://") : undefined;
+
 const redisClient = createClient({
-  url: process.env.REDIS_URL,
+  url: redisUrl,
   socket: {
     tls: true // important for deployment
   }
