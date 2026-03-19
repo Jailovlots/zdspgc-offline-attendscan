@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import db, { initDb } from './db.js';
 import dotenv from 'dotenv';
+import redisClient from './redis.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

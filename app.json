@@ -7,6 +7,9 @@
     },
     "android": {
       "package": "com.jaicute.vite_react_shadcn_ts"
+    },
+    "ios": {
+      "bundleIdentifier": "com.jaicute.vite_react_shadcn_ts"
     }
   }
 }

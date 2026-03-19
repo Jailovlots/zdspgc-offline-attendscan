@@ -10,8 +10,10 @@
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.jaicute.zdspgcattendscan1963a225main",
       "infoPlist": {
-        "NSCameraUsageDescription": "Allow AttendWise to access your camera to scan student QR codes."
+        "NSCameraUsageDescription": "Allow AttendWise to access your camera to scan student QR codes.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -27,7 +29,9 @@
       "usesCleartextTraffic": true,
       "permissions": [
         "CAMERA",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
