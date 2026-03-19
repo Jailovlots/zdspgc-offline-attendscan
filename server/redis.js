@@ -3,13 +3,15 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const redisUrl = process.env.REDIS_URL ? process.env.REDIS_URL.replace(/^redis:\/\//, "rediss://") : undefined;
+let redisUrl = process.env.REDIS_URL || '';
+redisUrl = redisUrl.replace(/["']/g, ''); // Remove any stray quotes
+
+if (redisUrl.includes('upstash.io') && redisUrl.startsWith('redis://')) {
+  redisUrl = redisUrl.replace('redis://', 'rediss://');
+}
 
 const redisClient = createClient({
-  url: redisUrl,
-  socket: {
-    tls: true // important for deployment
-  }
+  url: redisUrl || undefined
 });
 
 redisClient.on("error", (err) => {
