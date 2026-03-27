@@ -17,10 +17,9 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.json());
 
-// API Root Status Route (Requested)
-// Note: This overrides serving the React frontend on the exact '/' path. 
-// If you want the React frontend to load on '/', you should remove this or change to '/api/status'
-app.get("/", (req, res) => {
+// API Root Status Route
+// Moved to /api/status so it doesn't break React frontend loading on '/'
+app.get("/api/status", (req, res) => {
   res.send("API is running");
 });
 // Serve static frontend files with CDN/Browser caching enabled
