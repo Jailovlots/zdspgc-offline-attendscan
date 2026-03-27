@@ -517,11 +517,82 @@ app.post('/api/attendance', async (req, res) => {
     const result = await db.query(`
       INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (studentid, eventid) DO NOTHING
       RETURNING *
     `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
-    res.json(mapAttendance(result.rows[0]));
+    if (result.rows.length > 0) {
+      res.json(mapAttendance(result.rows[0]));
+    } else {
+      res.status(400).json({ error: 'Duplicate attendance record for this event' });
+    }
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/attendance/bulk', async (req, res) => {
+  const records = req.body;
+  if (!Array.isArray(records)) {
+    return res.status(400).json({ error: 'Expected an array of records' });
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const inserted = [];
+    for (const r of records) {
+      // Since attendance now has a unique constraint, we can safely ignore duplicates
+      const result = await client.query(`
+        INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (studentid, eventid) DO NOTHING
+        RETURNING *
+      `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
+      if (result.rows.length > 0) {
+        inserted.push(mapAttendance(result.rows[0]));
+      }
+    }
+    await client.query('COMMIT');
+    res.json(inserted);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/attendance/bulk', async (req, res) => {
+  const records = req.body;
+
+  if (!Array.isArray(records)) {
+    return res.status(400).send("Records must be an array");
+  }
+
+  try {
+    for (const record of records) {
+      await db.query(`
+        INSERT INTO attendance(studentid, name, course, section, gender, time, status, eventid, eventname, timestamp) 
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (studentid, eventid) DO NOTHING
+      `,
+        [
+          record.studentId, 
+          record.name || "Offline Scan", 
+          record.course || "N/A", 
+          record.section || "N/A", 
+          record.gender || "N/A", 
+          new Date(record.time).toLocaleTimeString() || "N/A", 
+          record.status || "Present", 
+          record.session || record.eventId || "EVT-OFFLINE", 
+          record.eventName || "Offline Session", 
+          record.time
+        ]
+      );
+    }
+    res.send("Bulk insert success");
+  } catch (err) {
+    res.status(500).send("Bulk insert failed: " + err.message);
   }
 });
 

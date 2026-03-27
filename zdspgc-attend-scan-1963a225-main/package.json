@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "node index.js",
+    "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -13,6 +13,8 @@
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
     "@expo/vector-icons": "~14.0.4",
+    "@react-native-async-storage/async-storage": "^3.0.2",
+    "@react-native-community/netinfo": "^12.0.1",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.0.14",

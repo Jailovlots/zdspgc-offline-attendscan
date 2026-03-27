@@ -138,7 +138,8 @@ export const initDb = async () => {
         eventid TEXT NOT NULL,
         eventname TEXT NOT NULL,
         timestamp BIGINT NOT NULL,
-        FOREIGN KEY(studentid) REFERENCES users(studentid)
+        FOREIGN KEY(studentid) REFERENCES users(studentid),
+        UNIQUE(studentid, eventid)
       )`,
       `CREATE TABLE IF NOT EXISTS courses (
         id SERIAL PRIMARY KEY,
@@ -159,6 +160,13 @@ export const initDb = async () => {
 
     for (const query of otherTables) {
       await db.query(query);
+    }
+
+    try {
+      await db.query('ALTER TABLE attendance ADD CONSTRAINT attendance_studentid_eventid_key UNIQUE(studentid, eventid)');
+      console.log('Added unique constraint to attendance table');
+    } catch (e) {
+      // Constraint might already exist or there are duplicates preventing it, ignore safely
     }
 
     // 5. Initialize default settings if missing

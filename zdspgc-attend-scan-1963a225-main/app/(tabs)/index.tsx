@@ -7,6 +7,7 @@ export default function HomeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [useNativeScanner, setUseNativeScanner] = useState(false);
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const webViewRef = useRef<WebView>(null);
 
   const targetUri = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
@@ -23,23 +24,78 @@ export default function HomeScreen() {
   React.useEffect(() => {
     const checkServer = async () => {
       try {
-        const res = await fetch(`${targetUri}/api/health`);
-        const data = await res.json();
+        const res = await fetch(`${targetUri}/api/health`, { timeout: 5000 });
+        if (res.ok) {
+          if (isOffline) setIsOffline(false);
+          // Sync any offline attendance
+          try {
+            const { syncAttendance } = await import('../../utils/offlineAttendance');
+            await syncAttendance(targetUri);
+          } catch (e) {
+            console.log("Error syncing offline records:", e);
+          }
+        }
       } catch (error) {
-        console.log("Error:", error);
-        Alert.alert("Network error, please try again");
+        console.log("Network error checking server:", error);
+        setIsOffline(true);
       }
     };
     checkServer();
-  }, []);
+    const interval = setInterval(checkServer, 1000 * 30); // Check every 30 seconds
+    return () => clearInterval(interval);
+  }, [isOffline]);
 
-  const onBarcodeScanned = (result: BarcodeScanningResult) => {
-    if (useNativeScanner && webViewRef.current) {
+  const onBarcodeScanned = async (result: BarcodeScanningResult) => {
+    if (useNativeScanner) {
       console.log("Barcode scanned natively:", result.data);
-      // Inject the scan result into the web app
-      const script = `window.dispatchEvent(new CustomEvent('nativeScan', { detail: '${result.data}' }));`;
-      webViewRef.current.injectJavaScript(script);
-      setUseNativeScanner(false); // Switch back to WebView after successful scan
+      setUseNativeScanner(false); // Switch back after successful scan
+      
+      try {
+        const { saveOfflineAttendance } = await import('../../utils/offlineAttendance');
+        const now = Date.now();
+        const timeStr = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+        
+        const record = {
+          id: result.data,
+          studentId: result.data,
+          name: "Native Scan",
+          course: "N/A",
+          section: "N/A",
+          gender: "N/A",
+          time: timeStr,
+          status: "Present",
+          eventId: "EVT-GENERAL",
+          eventName: "Native Event",
+          timestamp: now,
+        };
+
+        const isOnline = !isOffline && bridgeReady;
+
+        if (isOnline) {
+          // normal API
+          try {
+            const res = await fetch(`${targetUri}/api/attendance`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(record)
+            });
+            
+            if (res.ok) {
+              Alert.alert("Success", "Scan recorded online");
+              return;
+            }
+          } catch (e) {
+            console.warn("Online save failed, falling back to offline", e);
+          }
+        }
+        
+        // offline save (fallback or explicit offline)
+        await saveOfflineAttendance(record);
+        Alert.alert("Offline Scan", "Saved locally. Will sync when online.");
+        
+      } catch (err) {
+        console.error("Failed to process scan: ", err);
+      }
     }
   };
 
@@ -70,8 +126,16 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Bridge Status Indicator */}
-      <View style={[styles.statusDot, { backgroundColor: bridgeReady ? '#22C55E' : '#EF4444' }]} />
+      {/* Bridge/Network Status Indicator */}
+      <View style={[styles.statusDot, { backgroundColor: isOffline ? '#EF4444' : (bridgeReady ? '#22C55E' : '#EAB308') }]} />
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>Server Unreachable - Operating Offline</Text>
+          <TouchableOpacity onPress={() => setUseNativeScanner(true)} style={styles.offlineScanBtn}>
+            <Text style={styles.offlineScanBtnText}>Open Native Scanner</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {useNativeScanner ? (
         <View style={styles.cameraContainer}>
@@ -143,6 +207,30 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     zIndex: 9999,
     elevation: 9999,
+  },
+  offlineBanner: {
+    backgroundColor: '#EF4444',
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  offlineScanBtn: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
+  },
+  offlineScanBtnText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   webview: {
     flex: 1,
