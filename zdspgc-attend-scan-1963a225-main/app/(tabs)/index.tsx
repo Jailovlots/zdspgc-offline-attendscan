@@ -2,6 +2,7 @@ import { useCameraPermissions, CameraView, BarcodeScanningResult } from 'expo-ca
 import React, { useRef, useState } from 'react';
 import { Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { syncAttendance, saveOfflineAttendance } from '../../utils/offlineAttendance';
 
 export default function HomeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -10,7 +11,7 @@ export default function HomeScreen() {
   const [isOffline, setIsOffline] = useState(false);
   const webViewRef = useRef<WebView>(null);
 
-  const targetUri = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
+  const targetUri = 'https://zdspgc-offline-attendscan.onrender.com';
 
   React.useEffect(() => {
     const checkPermissions = async () => {
@@ -24,12 +25,14 @@ export default function HomeScreen() {
   React.useEffect(() => {
     const checkServer = async () => {
       try {
-        const res = await fetch(`${targetUri}/api/health`, { timeout: 5000 });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(`${targetUri}/api/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (res.ok) {
           if (isOffline) setIsOffline(false);
           // Sync any offline attendance
           try {
-            const { syncAttendance } = await import('../../utils/offlineAttendance');
             await syncAttendance(targetUri);
           } catch (e) {
             console.log("Error syncing offline records:", e);
@@ -51,7 +54,6 @@ export default function HomeScreen() {
       setUseNativeScanner(false); // Switch back after successful scan
       
       try {
-        const { saveOfflineAttendance } = await import('../../utils/offlineAttendance');
         const now = Date.now();
         const timeStr = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
         
