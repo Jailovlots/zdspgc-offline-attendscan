@@ -3,12 +3,15 @@ import React, { useRef, useState } from 'react';
 import { Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { syncAttendance, saveOfflineAttendance } from '../../utils/offlineAttendance';
+import { loadFromStorage, saveStudentInfo, saveSession, syncDataFromServer } from '../../utils/dataStorage';
 
 export default function HomeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [useNativeScanner, setUseNativeScanner] = useState(false);
   const [bridgeReady, setBridgeReady] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [studentInfo, setStudentInfo] = useState<any>(null);
+  const [session, setSession] = useState<any>(null);
   const webViewRef = useRef<WebView>(null);
 
   const targetUri = 'https://zdspgc-offline-attendscan.onrender.com';
@@ -20,7 +23,23 @@ export default function HomeScreen() {
       }
     };
     checkPermissions();
+    
+    // Step 1: load from phone (fast) - "Instant opening"
+    const initStorage = async () => {
+      const data = await loadFromStorage();
+      if (data.info) setStudentInfo(data.info);
+      if (data.session) setSession(data.session);
+    };
+    initStorage();
   }, [permission, requestPermission]);
+
+  // Step 2: update from server (background)
+  const fetchFromAPI = async () => {
+    if (isOffline) return;
+    const data = await syncDataFromServer(session?.studentId, session?.role || 'student', targetUri);
+    if (data?.profile) setStudentInfo(data.profile);
+    if (data) console.log("✅ Data synced from server (Batched)");
+  };
 
   React.useEffect(() => {
     const checkServer = async () => {
@@ -45,8 +64,14 @@ export default function HomeScreen() {
     };
     checkServer();
     const interval = setInterval(checkServer, 1000 * 30); // Check every 30 seconds
+    
+    // Background sync when status changes to online
+    if (!isOffline) {
+        fetchFromAPI();
+    }
+    
     return () => clearInterval(interval);
-  }, [isOffline]);
+  }, [isOffline, session]);
 
   const onBarcodeScanned = async (result: BarcodeScanningResult) => {
     if (useNativeScanner) {
@@ -132,7 +157,14 @@ export default function HomeScreen() {
       <View style={[styles.statusDot, { backgroundColor: isOffline ? '#EF4444' : (bridgeReady ? '#22C55E' : '#EAB308') }]} />
       {isOffline && (
         <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>Server Unreachable - Operating Offline</Text>
+          <View>
+            <Text style={styles.offlineText}>Server Unreachable - Operating Offline</Text>
+            {studentInfo && (
+              <Text style={styles.cachedInfoText}>
+                Logged in as: {studentInfo.name || "Student"}
+              </Text>
+            )}
+          </View>
           <TouchableOpacity onPress={() => setUseNativeScanner(true)} style={styles.offlineScanBtn}>
             <Text style={styles.offlineScanBtnText}>Open Native Scanner</Text>
           </TouchableOpacity>
@@ -179,6 +211,17 @@ export default function HomeScreen() {
               setUseNativeScanner(true);
             } else if (data.type === 'PING') {
               setBridgeReady(true);
+            } else if (data.type === 'AUTH_SUCCESS') {
+              // Save session and student info when login is successful in WebView
+              if (data.session) {
+                setSession(data.session);
+                saveSession(data.session);
+              }
+              if (data.student) {
+                setStudentInfo(data.student);
+                saveStudentInfo(data.student);
+              }
+              console.log("✅ Session saved from WebView");
             }
           } catch (e) {
             console.error("WebView message error:", e);
@@ -190,6 +233,20 @@ export default function HomeScreen() {
         }}
         mixedContentMode="always"
       />
+
+      {/* Instant Data Footer (Always visible if logged in) */}
+      {!useNativeScanner && studentInfo && (
+        <View style={styles.footerInfo}>
+          <View style={styles.footerLeft}>
+             <Text style={styles.footerLabel}>STUDENT</Text>
+             <Text style={styles.footerName}>{studentInfo.name}</Text>
+          </View>
+          <View style={styles.footerRight}>
+             <Text style={styles.footerLabel}>ID NUMBER</Text>
+             <Text style={styles.footerId}>{studentInfo.studentId || studentInfo.id}</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -285,4 +342,52 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
+  cachedInfoText: {
+    color: 'white',
+    fontSize: 10,
+    opacity: 0.8,
+  },
+  footerInfo: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  footerLabel: {
+    fontSize: 8,
+    color: '#888',
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  footerName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+  },
+  footerId: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  footerLeft: {
+    flex: 2,
+  },
+  footerRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  }
 });

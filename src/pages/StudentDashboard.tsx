@@ -6,10 +6,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getSession, getAttendanceRecords, type AttendanceRecord } from "@/lib/auth";
-import { getEvents, generateEventQrToken, type SchoolEvent } from "@/data/events";
+import { getSession, getAttendanceRecords, getDashboardInitData, type AttendanceRecord } from "@/lib/auth";
+import { generateEventQrToken, type SchoolEvent } from "@/data/events";
 import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const MONTHS = ["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
 
@@ -19,7 +20,62 @@ const StudentDashboard = () => {
 
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<SchoolEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // show skeletons on first load
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
+
+  // Conceptual helpers for the requested "system" logic
+  const setScreen = (name: string) => console.log(`Screen set to: ${name}`);
+  
+  // STEP 1: Load ONLY important data on start (Batch Init)
+  const fetchData = async () => {
+    const session = getSession();
+    if (!session) return;
+    
+    try {
+      // Use batched API to get settings and events in one go
+      const initData = await getDashboardInitData(session.studentId, 'student');
+      
+      if (initData?.events) {
+        // Filter relevant upcoming events (Basic Info)
+        const relevantEvents = initData.events
+            .filter((e: any) => e.status !== "completed")
+            .filter((e: any) => e.category === "general" || e.targetCourses.includes(session.course))
+            .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            .slice(0, 3);
+        setUpcomingEvents(relevantEvents);
+      }
+    } catch (err) {
+      console.error("Failed to load student dashboard basic info:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // STEP 2: Load Attendance history later when user clicks
+  const loadAttendanceHistory = async () => {
+    const session = getSession();
+    if (!session || isHistoryLoaded) return;
+    
+    setIsHistoryLoading(true);
+    try {
+      const records = await getAttendanceRecords();
+      
+      // Filter personal history
+      const personalHistory = records
+          .filter(r => (r.studentId || r.id) === session.studentId)
+          .sort((a, b) => b.timestamp - a.timestamp);
+      
+      setHistory(personalHistory);
+      setIsHistoryLoaded(true);
+      toast.success("Attendance history loaded");
+    } catch (err) {
+      console.error("Failed to load attendance history:", err);
+      toast.error("Failed to load attendance history");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
 
   useEffect(() => {
     const session = getSession();
@@ -28,36 +84,11 @@ const StudentDashboard = () => {
       return;
     }
     setUser(session);
+    
+    setScreen("Home"); // Transition to home screen immediately
+    fetchData(); // Kick off data fetch in background
 
-    const loadData = async () => {
-      try {
-        const [records, eventsData] = await Promise.all([
-          getAttendanceRecords(),
-          getEvents()
-        ]);
-        
-        // Filter personal history
-        const personalHistory = records
-          .filter(r => (r.studentId || r.id) === session.studentId)
-          .sort((a, b) => b.timestamp - a.timestamp);
-        setHistory(personalHistory);
-
-        // Filter relevant upcoming events
-        const relevantEvents = eventsData
-          .filter(e => e.status !== "completed")
-          .filter(e => e.category === "general" || e.targetCourses.includes(session.course))
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-          .slice(0, 3);
-        setUpcomingEvents(relevantEvents);
-      } catch (err) {
-        console.error("Failed to load student dashboard data:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-    const interval = setInterval(loadData, 30000); // Auto-refresh every 30s
+    const interval = setInterval(fetchData, 30000); // Auto-refresh every 30s
     return () => clearInterval(interval);
   }, [navigate]);
 
@@ -100,23 +131,13 @@ const StudentDashboard = () => {
     ).token;
   }, [user]);
 
-  if (!user || isLoading) {
-    return (
-      <DashboardLayout role="student">
-        <div className="flex items-center justify-center min-h-[50vh]">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent"></div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout role="student">
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Student Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-1">Welcome back, {user.firstName} {user.lastName}</p>
+            <p className="text-muted-foreground text-sm mt-1">Welcome back, {user?.firstName} {user?.lastName}</p>
           </div>
           {history.length > 0 && (
             <div className="flex items-center gap-3 bg-success/5 border border-success/20 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-right-4 duration-500">
@@ -134,19 +155,36 @@ const StudentDashboard = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((s) => (
-            <Card key={s.label} className="shadow-card">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
-                  <s.icon className={`h-5 w-5 ${s.color}`} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{s.value}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {isLoading ? (
+            // Stats Skeleton
+            [1, 2, 3, 4].map((i) => (
+              <Card key={i} className="shadow-card border-none bg-white/50 animate-pulse">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 skeleton shrink-0" />
+                  <div className="space-y-2">
+                    <div className="h-2 w-16 skeleton" />
+                    <div className="h-4 w-12 skeleton" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            stats.map((s) => (
+              <Card key={s.label} className="shadow-card">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                    <s.icon className={`h-5 w-5 ${s.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {isHistoryLoaded ? s.value : "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{s.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
@@ -157,50 +195,65 @@ const StudentDashboard = () => {
               Upcoming Events
             </h2>
             <div className="grid sm:grid-cols-2 gap-4">
-              {upcomingEvents.map((event) => (
-                <Card key={event.id} className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors">
-                  <CardContent className="p-0">
-                    <div className="p-4 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.category === 'course-specific' ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'
-                          }`}>
-                          {event.category === 'course-specific' ? `${event.targetCourses[0]} Special` : 'Open to All'}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
-                          }`}>
-                          {event.status}
-                        </span>
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-foreground group-hover:text-gold transition-colors">{event.name}</h3>
-                        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{event.description}</p>
-                      </div>
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center text-xs text-muted-foreground gap-2">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span>{new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+              {isLoading ? (
+                // Events Skeleton
+                [1, 2].map(i => (
+                  <Card key={i} className="shadow-card animate-pulse">
+                     <CardContent className="p-4 flex gap-4">
+                        <div className="h-12 w-12 skeleton shrink-0" />
+                        <div className="space-y-2 w-full">
+                           <div className="h-3 w-1/3 skeleton" />
+                           <div className="h-2 w-1/2 skeleton" />
+                           <div className="h-8 w-full skeleton mt-2" />
                         </div>
-                        <div className="flex items-center text-xs text-muted-foreground gap-2">
-                          <Clock className="h-3.5 w-3.5" />
-                          <span>{event.time}</span>
+                     </CardContent>
+                  </Card>
+                ))
+              ) : upcomingEvents.length > 0 ? (
+                upcomingEvents.map((event) => (
+                  <Card key={event.id} className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors">
+                    <CardContent className="p-0">
+                      <div className="p-4 space-y-3">
+                        <div className="flex justify-between items-start">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.category === 'course-specific' ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'
+                            }`}>
+                            {event.category === 'course-specific' ? `${event.targetCourses[0]} Special` : 'Open to All'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
+                            }`}>
+                            {event.status}
+                          </span>
                         </div>
-                        <div className="flex items-center text-xs text-muted-foreground gap-2">
-                          <MapPin className="h-3.5 w-3.5" />
-                          <span className="truncate">{event.location}</span>
+                        <div>
+                          <h3 className="font-bold text-foreground group-hover:text-gold transition-colors">{event.name}</h3>
+                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{event.description}</p>
                         </div>
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span>{new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>{event.time}</span>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <MapPin className="h-3.5 w-3.5" />
+                            <span className="truncate">{event.location}</span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2"
+                          onClick={() => navigate(`/student/qr?event=${event.id}`)}
+                        >
+                          Generate QR <ArrowRight className="ml-2 h-3 w-3" />
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2"
-                        onClick={() => navigate(`/student/qr?event=${event.id}`)}
-                      >
-                        Generate QR <ArrowRight className="ml-2 h-3 w-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {upcomingEvents.length === 0 && (
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
                 <div className="col-span-full py-8 text-center border-2 border-dashed rounded-xl border-muted">
                   <p className="text-muted-foreground text-sm">No upcoming events scheduled</p>
                 </div>
@@ -250,6 +303,23 @@ const StudentDashboard = () => {
                 <Bar dataKey="late" fill="hsl(38, 92%, 50%)" radius={[6, 6, 0, 0]} name="Late" barSize={20} />
               </BarChart>
             </ResponsiveContainer>
+            {!isHistoryLoaded && (
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+                <Button 
+                  onClick={loadAttendanceHistory} 
+                  variant="outline" 
+                  disabled={isHistoryLoading}
+                  className="bg-background shadow-lg border-gold/30 hover:border-gold"
+                >
+                  {isHistoryLoading ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CalendarDays className="h-4 w-4 mr-2 text-gold" />
+                  )}
+                  Load Analytics & Stats
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -269,32 +339,52 @@ const StudentDashboard = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {history.slice(0, 10).map((row, i) => (
-                  <TableRow key={row.timestamp + i}>
-                    <TableCell className="font-medium">
-                      {new Date(row.timestamp).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px] whitespace-nowrap bg-background">
-                        {row.eventName || "General Attendance"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{row.time}</TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
-                          ? "bg-success/10 text-success"
-                          : row.status === "Late"
-                            ? "bg-warning/10 text-warning"
-                            : "bg-destructive/10 text-destructive"
-                          }`}
+                {isHistoryLoaded ? (
+                  history.slice(0, 10).map((row, i) => (
+                    <TableRow key={row.timestamp + i}>
+                      <TableCell className="font-medium">
+                        {new Date(row.timestamp).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] whitespace-nowrap bg-background">
+                          {row.eventName || "General Attendance"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{row.time}</TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
+                            ? "bg-success/10 text-success"
+                            : row.status === "Late"
+                              ? "bg-warning/10 text-warning"
+                              : "bg-destructive/10 text-destructive"
+                            }`}
+                        >
+                          {row.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-12">
+                      <Button 
+                        onClick={loadAttendanceHistory} 
+                        variant="ghost" 
+                        disabled={isHistoryLoading}
+                        className="text-gold hover:bg-gold/5"
                       >
-                        {row.status}
-                      </span>
+                        {isHistoryLoading ? (
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Clock className="h-4 w-4 mr-2" />
+                        )}
+                        Show Attendance Records
+                      </Button>
                     </TableCell>
                   </TableRow>
-                ))}
-                {history.length === 0 && (
+                )}
+                {isHistoryLoaded && history.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                       No recent activity found.

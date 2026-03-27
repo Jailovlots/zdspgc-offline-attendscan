@@ -246,6 +246,16 @@ export const updateSystemSettings = async (settings: any) => {
   return res.ok;
 };
 
+export const getDashboardInitData = async (studentId?: string, role: string = 'student') => {
+  const params = new URLSearchParams();
+  if (studentId) params.append('studentId', studentId);
+  params.append('role', role);
+  
+  const res = await fetch(`${API_URL}/api/init-data?${params.toString()}`);
+  if (res.ok) return await res.json();
+  return null;
+};
+
 // --- One-time Migration logic ---
 export const migrateLocalStorageToServer = async () => {
   if (localStorage.getItem(MIGRATED_KEY)) return;

@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import redisClient from './redis.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import compression from 'compression';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +15,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3002;
 
+app.use(compression());
 app.use(cors());
 app.use(express.json());
 
@@ -622,6 +624,68 @@ app.delete('/api/attendance/bulk', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Combined Initialization Route (API Batching) ---
+app.get('/api/init-data', async (req, res) => {
+  const { studentId, role } = req.query;
+  
+  try {
+    const promises = [
+      db.query('SELECT * FROM settings WHERE id = 1'),
+      db.query('SELECT * FROM events')
+    ];
+
+    // For students, fetch their profile and recent attendance
+    if (role === 'student' && studentId) {
+      promises.push(db.query('SELECT * FROM users WHERE studentid = $1', [studentId]));
+      promises.push(db.query('SELECT * FROM attendance WHERE studentid = $1 ORDER BY timestamp DESC LIMIT 50', [studentId]));
+    } 
+    // For admins, fetch all students summary and sections
+    else if (role === 'admin') {
+      promises.push(db.query('SELECT * FROM users WHERE role = $1', ['student']));
+      promises.push(db.query('SELECT * FROM sections'));
+      promises.push(db.query('SELECT name FROM courses'));
+    }
+
+    const results = await Promise.all(promises);
+    
+    const settings = results[0].rows.length > 0 ? mapSettings(results[0].rows[0]) : null;
+    const events = results[1].rows.map(e => ({
+      ...e,
+      targetCourses: JSON.parse(e.targetcourses || e.targetCourses || '[]')
+    }));
+
+    const responseData = {
+      settings,
+      events,
+      timestamp: Date.now()
+    };
+
+    if (role === 'student' && results[2]) {
+      responseData.profile = results[2].rows.length > 0 ? mapUser(results[2].rows[0]) : null;
+      responseData.attendance = results[3] ? results[3].rows.map(mapAttendance) : [];
+    } else if (role === 'admin' && results[2]) {
+      responseData.students = results[2].rows.map(mapUser);
+      
+      // Process sections
+      const sectionsResult = results[3];
+      const coursesResult = results[4];
+      const groupedSections = {};
+      coursesResult.rows.forEach(c => { groupedSections[c.name] = {}; });
+      sectionsResult.rows.forEach(s => {
+        if (!groupedSections[s.course]) groupedSections[s.course] = {};
+        if (!groupedSections[s.course][s.year]) groupedSections[s.course][s.year] = [];
+        groupedSections[s.course][s.year].push(s.section);
+      });
+      responseData.sections = groupedSections;
+    }
+
+    res.json(responseData);
+  } catch (err) {
+    console.error("Init data fetch error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
