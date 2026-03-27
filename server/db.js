@@ -22,6 +22,13 @@ const poolConfig = process.env.DATABASE_URL
 
 if (process.env.DATABASE_URL) {
   console.log('Database connecting via DATABASE_URL');
+} else if (process.env.RENDER || process.env.NODE_ENV === 'production') {
+  console.error('\n======================================================');
+  console.error('❌ CRITICAL: NO DATABASE CONFIGURED ON RENDER!');
+  console.error('Your app is running on Render, but you haven\'t added a DATABASE_URL.');
+  console.error('You must go to your Render.com Dashboard -> Environment tab,');
+  console.error('and add a custom PostgreSQL connection string (like from Neon.tech).');
+  console.error('======================================================\n');
 } else if (process.env.PGHOST) {
   console.log(`Database connecting to ${process.env.PGHOST}`);
 } else {
