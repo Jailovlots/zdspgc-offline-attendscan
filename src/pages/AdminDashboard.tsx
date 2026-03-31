@@ -11,7 +11,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import DashboardLayout from "@/components/DashboardLayout";
 import { getAllStudents, getAttendanceRecords, getCourseSections, getDashboardInitData, type AttendanceRecord, type StudentUser } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
-import { exportToCsv } from "@/lib/exportUtils";
+import { exportToCsv, type CSVSection } from "@/lib/exportUtils";
 import { toast } from "sonner";
 
 const getTodayDateString = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
@@ -278,14 +278,14 @@ const AdminDashboard = () => {
     const courseLabel = selectedCourse === "All" ? "All Courses" : selectedCourse;
     const dateLabel = selectedDate;
 
-    const sections = [
+    const sections: CSVSection[] = [
       {
         title: `AttendWise Attendance Record`,
         rows: [
           ["Course/Department", courseLabel],
           ["Attendance Date", dateLabel],
           ["Export Generated", new Date().toLocaleString()],
-        ]
+        ],
       },
       {
         title: "Summary Statistics",
@@ -294,24 +294,38 @@ const AdminDashboard = () => {
           ["Present", stats.present],
           ["Late", stats.late],
           ["Absent", stats.absent],
-          ["Attendance Rate", stats.total > 0 ? `${Math.round(((stats.present + stats.late) / stats.total) * 100)}%` : "0%"],
-        ]
+          [
+            "Attendance Rate",
+            stats.total > 0 ? `${Math.round(((stats.present + stats.late) / stats.total) * 100)}%` : "0%",
+          ],
+        ],
       },
       {
         title: "Gender Breakdown",
         rows: [
           ["Male (Present/Total)", `${genderStats.male.attended} / ${genderStats.male.total}`],
           ["Female (Present/Total)", `${genderStats.female.attended} / ${genderStats.female.total}`],
-        ]
+        ],
       },
       {
         title: "Detailed Attendance Log",
         headers: ["Student ID", "Full Name", "Course", "Year", "Section", "Gender", "Event", "Status", "Time"],
-        rows: filteredScans.map(s => [
-          s.id, s.name, s.course, s.year, s.section, s.gender, s.eventName, s.time, s.status
-        ])
-      }
+        rows: filteredScans.map((s) => [
+          s.id,
+          s.name,
+          s.course,
+          s.year,
+          s.section,
+          s.gender,
+          s.eventName,
+          s.status,
+          s.time,
+        ]),
+      },
     ];
+
+    const fileName = `Attendance_${courseLabel.replace(/\s+/g, "_")}_${dateLabel}.csv`;
+    exportToCsv(fileName, sections);
     toast.success("Attendance record exported");
   };
 

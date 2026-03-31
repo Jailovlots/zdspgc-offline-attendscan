@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+android/
+ios/
+dist/
+web-build/
+zdspgc-attend-scan-1963a225-main/node_modules/
+zdspgc-attend-scan-1963a225-main/android/
+zdspgc-attend-scan-1963a225-main/ios/
+zdspgc-attend-scan-1963a225-main/dist/
+zdspgc-attend-scan-1963a225-main/web-build/
