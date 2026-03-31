@@ -291,9 +291,17 @@ const AdminScanner = () => {
       {
         title: "Scanned Records Log",
         headers: ["Student ID", "Full Name", "Course", "Section", "Gender", "Event", "Status", "Time"],
-        rows: scannedRecords.map(s => [
-          s.studentId || s.id, s.name, s.course, s.section, s.gender, s.eventName, s.status, s.time
-        ])
+        rows: [...scannedRecords]
+          .sort((a, b) => {
+            const courseComp = (a.course || "").localeCompare(b.course || "");
+            if (courseComp !== 0) return courseComp;
+            const sectionComp = (a.section || "").localeCompare(b.section || "");
+            if (sectionComp !== 0) return sectionComp;
+            return a.name.localeCompare(b.name);
+          })
+          .map(s => [
+            s.studentId || s.id, s.name, s.course, s.section, s.gender, s.eventName, s.status, s.time
+          ])
       }
     ];
 

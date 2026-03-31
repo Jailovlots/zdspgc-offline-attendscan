@@ -183,9 +183,17 @@ const AdminReports = () => {
         sections.push({
             title: "Attendance Data",
             headers: ["Student ID", "Full Name", "Course", "Year Level", "Section", "Gender", "Status", "Time"],
-            rows: filteredRows.map((r) => [
-                r.studentId, r.name, r.course, r.yearLevel, r.section, r.gender, r.status, r.time,
-            ])
+            rows: [...filteredRows]
+                .sort((a, b) => {
+                    const courseComp = a.course.localeCompare(b.course);
+                    if (courseComp !== 0) return courseComp;
+                    const sectionComp = a.section.localeCompare(b.section);
+                    if (sectionComp !== 0) return sectionComp;
+                    return a.name.localeCompare(b.name);
+                })
+                .map((r) => [
+                    r.studentId, r.name, r.course, r.yearLevel, r.section, r.gender, r.status, r.time,
+                ])
         });
 
         const fileName = `AttendWise_Report_${eventLabel.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;

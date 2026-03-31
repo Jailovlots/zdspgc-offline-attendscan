@@ -310,7 +310,21 @@ const AdminDashboard = () => {
       {
         title: "Detailed Attendance Log",
         headers: ["Student ID", "Full Name", "Course", "Year", "Section", "Gender", "Event", "Status", "Time"],
-        rows: filteredScans.map((s) => [
+        rows: [...filteredScans]
+          .sort((a, b) => {
+            // Priority: Course -> Year -> Section -> Name
+            const courseComp = a.course.localeCompare(b.course);
+            if (courseComp !== 0) return courseComp;
+            
+            const yearComp = a.year.localeCompare(b.year);
+            if (yearComp !== 0) return yearComp;
+            
+            const sectionComp = a.section.localeCompare(b.section);
+            if (sectionComp !== 0) return sectionComp;
+            
+            return a.name.localeCompare(b.name);
+          })
+          .map((s) => [
           s.id,
           s.name,
           s.course,
