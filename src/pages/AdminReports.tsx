@@ -88,7 +88,7 @@ const AdminReports = () => {
             courseFilter === "all" ? students : students.filter((s) => s.course === courseFilter);
 
         return scopedStudents.map((s) => {
-            const rec = eventAttendance.find((r) => r.id === s.studentId);
+            const rec = eventAttendance.find((r) => r.studentId === s.studentId);
             return {
                 studentId: s.studentId ?? "",
                 name: `${s.firstName ?? ""} ${s.lastName ?? ""}`.trim(),

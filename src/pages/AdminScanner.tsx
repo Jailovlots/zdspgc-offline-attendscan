@@ -275,23 +275,34 @@ const AdminScanner = () => {
   );
   
   const handleExport = () => {
-    if (scannedRecords.length === 0) {
-      toast.error("No records to export");
+    const hasActiveFilter = selectedEventFilter !== "all";
+    const recordsToExport = hasActiveFilter ? filteredRecords : scannedRecords;
+    
+    if (recordsToExport.length === 0) {
+      toast.error(hasActiveFilter ? "No records for this event to export" : "No records to export");
       return;
     }
 
+    const eventObj = hasActiveFilter ? events.find(e => e.id === selectedEventFilter) : null;
+    const eventLabel = eventObj ? eventObj.name : "All Events";
+
     const sections = [
       {
-        title: `AttendWise Scanner Attendance Export`,
+        title: `AttendWise ${eventLabel} Attendance Export`,
         rows: [
           ["Export Generated", new Date().toLocaleString()],
-          ["Total Scans in this Session", scannedRecords.length],
+          ["Total Scans", recordsToExport.length],
+          ...(eventObj ? [
+            ["Event Name", eventObj.name],
+            ["Event Date", eventObj.date],
+            ["Event Location", eventObj.location]
+          ] : [])
         ]
       },
       {
-        title: "Scanned Records Log",
+        title: "Attendance Records",
         headers: ["Student ID", "Full Name", "Course", "Section", "Gender", "Event", "Status", "Time"],
-        rows: [...scannedRecords]
+        rows: [...recordsToExport]
           .sort((a, b) => {
             const courseComp = (a.course || "").localeCompare(b.course || "");
             if (courseComp !== 0) return courseComp;
@@ -306,9 +317,9 @@ const AdminScanner = () => {
     ];
 
     const dateStr = new Date().toLocaleDateString('en-CA');
-    const fileName = `Scanner_Attendance_${dateStr}.csv`;
+    const fileName = `Attendance_${eventLabel.replace(/\s+/g, '_')}_${dateStr}.csv`;
     exportToCsv(fileName, sections);
-    toast.success("Attendance records exported successfully");
+    toast.success(`${eventLabel} records exported successfully`);
   };
 
 
