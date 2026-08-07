@@ -1,5 +1,5 @@
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Clock, XCircle, CalendarDays, Calendar, MapPin, ArrowRight, QrCode } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, CalendarDays, Calendar, MapPin, ArrowRight, QrCode, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -32,6 +32,8 @@ const StudentDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     const session = getSession();
@@ -82,6 +84,26 @@ const StudentDashboard = () => {
       setIsSyncing(false);
     }
   }, []);
+
+  const loadAttendanceHistory = async () => {
+    const session = getSession();
+    if (!session || isHistoryLoaded) return;
+    setIsHistoryLoading(true);
+    try {
+      const records = await getAttendanceRecords();
+      const personalHistory = records
+        .filter((r) => (r.studentId || r.id) === session.studentId)
+        .sort((a, b) => b.timestamp - a.timestamp);
+      setHistory(personalHistory);
+      setIsHistoryLoaded(true);
+      toast.success("Attendance history loaded");
+    } catch (err) {
+      console.error("Failed to load attendance history:", err);
+      toast.error("Failed to load attendance history");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
 
 
   useEffect(() => {
