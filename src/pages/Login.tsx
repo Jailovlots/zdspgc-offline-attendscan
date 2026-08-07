@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import bsisLogo from "@/assets/bsis-logo.png";
 import { loginUser } from "@/lib/auth";
 import { API_URL } from "@/lib/config";
+import { syncOfflineEvents } from "@/lib/offlineEvents";
 
 const Login = () => {
   const [loginId, setLoginId] = useState("");
@@ -50,6 +51,10 @@ const Login = () => {
 
       if (user && user.role === role) {
         toast({ title: "Login successful!", description: `Welcome back, ${user.firstName}!` });
+        if (role === "student") {
+          // Pre-fetch and cache offline event QR codes immediately upon login
+          await syncOfflineEvents(user).catch((err) => console.error("Login offline sync error:", err));
+        }
         navigate(role === "admin" ? "/admin" : "/student");
       } else if (user && user.role !== role) {
         toast({

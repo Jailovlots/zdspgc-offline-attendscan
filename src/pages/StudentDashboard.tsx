@@ -1,25 +1,86 @@
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Clock, XCircle, CalendarDays, RefreshCw, Calendar, MapPin, ArrowRight } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, CalendarDays, Calendar, MapPin, ArrowRight, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
+import OfflineStatusIndicator from "@/components/OfflineStatusIndicator";
 import { getSession, setSession, getStudentProfile, getAttendanceRecords, type AttendanceRecord } from "@/lib/auth";
 import { getEvents, generateEventQrToken, type SchoolEvent } from "@/data/events";
-import { useMemo, useEffect, useState } from "react";
+import {
+  useOnlineStatus,
+  syncOfflineEvents,
+  getOfflineEvents,
+  getLastSyncTime,
+  type OfflineEventData,
+} from "@/lib/offlineEvents";
+import { useMemo, useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 const MONTHS = ["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
+  const { isOnline } = useOnlineStatus();
   const [user, setUser] = useState(getSession());
 
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
-  const [upcomingEvents, setUpcomingEvents] = useState<SchoolEvent[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<(SchoolEvent | OfflineEventData)[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    const session = getSession();
+    if (!session || session.role !== "student") return;
+
+    try {
+      if (navigator.onLine) {
+        setIsSyncing(true);
+        const [records, eventsData, freshProfile] = await Promise.all([
+          getAttendanceRecords().catch(() => []),
+          getEvents().catch(() => []),
+          getStudentProfile(session.studentId).catch(() => null),
+        ]);
+
+        let activeCourse = session.course;
+        if (freshProfile) {
+          setSession(freshProfile);
+          setUser(freshProfile);
+          activeCourse = freshProfile.course;
+        }
+
+        // Filter personal attendance history
+        const personalHistory = records
+          .filter((r) => (r.studentId || r.id) === session.studentId)
+          .sort((a, b) => b.timestamp - a.timestamp);
+        setHistory(personalHistory);
+
+        // Sync offline events store for offline use
+        await syncOfflineEvents(freshProfile || session).catch(() => []);
+        setLastSyncTime(getLastSyncTime(session.studentId));
+
+        // Filter relevant upcoming events for display
+        const relevantEvents = eventsData
+          .filter((e) => e.status !== "completed")
+          .filter((e) => e.targetCourses.length === 0 || e.targetCourses.includes(activeCourse))
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        setUpcomingEvents(relevantEvents);
+      } else {
+        // Offline mode: Load from persistent offline storage
+        const savedOffline = getOfflineEvents(session.studentId);
+        setUpcomingEvents(savedOffline);
+        setLastSyncTime(getLastSyncTime(session.studentId));
+      }
+    } catch (err) {
+      console.error("Failed to load student dashboard data:", err);
+    } finally {
+      setIsLoading(false);
+      setIsSyncing(false);
+    }
+  }, []);
 
   useEffect(() => {
     const session = getSession();
@@ -29,48 +90,21 @@ const StudentDashboard = () => {
     }
     setUser(session);
 
-    const loadData = async () => {
-      try {
-        const [records, eventsData, freshProfile] = await Promise.all([
-          getAttendanceRecords(),
-          getEvents(),
-          getStudentProfile(session.studentId)
-        ]);
-
-        let activeCourse = session.course;
-        if (freshProfile) {
-          setSession(freshProfile);
-          setUser(freshProfile);
-          activeCourse = freshProfile.course;
-        }
-        
-        // Filter personal history
-        const personalHistory = records
-          .filter(r => (r.studentId || r.id) === session.studentId)
-          .sort((a, b) => b.timestamp - a.timestamp);
-        setHistory(personalHistory);
-
-        // Filter relevant upcoming events — only show events for this student's course or open-to-all
-        const relevantEvents = eventsData
-          .filter(e => e.status !== "completed")
-          .filter(e => e.targetCourses.length === 0 || e.targetCourses.includes(activeCourse))
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        setUpcomingEvents(relevantEvents);
-      } catch (err) {
-        console.error("Failed to load student dashboard data:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadData();
-    const interval = setInterval(loadData, 30000); // Auto-refresh every 30s
+    const interval = setInterval(loadData, 30000); // Refresh every 30s when online
     return () => clearInterval(interval);
-  }, [navigate]);
+  }, [navigate, loadData]);
+
+  // Handle network online status transition
+  useEffect(() => {
+    if (isOnline) {
+      loadData();
+    }
+  }, [isOnline, loadData]);
 
   const stats = useMemo(() => {
-    const present = history.filter(r => r.status === "Present").length;
-    const late = history.filter(r => r.status === "Late").length;
+    const present = history.filter((r) => r.status === "Present").length;
+    const late = history.filter((r) => r.status === "Late").length;
     const total = history.length;
     return [
       { label: "Total Days", value: total.toString(), icon: CalendarDays, color: "text-foreground" },
@@ -81,12 +115,12 @@ const StudentDashboard = () => {
   }, [history]);
 
   const monthlyData = useMemo(() => {
-    const counts: Record<string, { month: string, present: number, late: number, absent: number }> = {};
-    MONTHS.forEach(m => counts[m] = { month: m, present: 0, late: 0, absent: 0 });
+    const counts: Record<string, { month: string; present: number; late: number; absent: number }> = {};
+    MONTHS.forEach((m) => (counts[m] = { month: m, present: 0, late: 0, absent: 0 }));
 
-    history.forEach(r => {
+    history.forEach((r) => {
       const date = new Date(r.timestamp);
-      const month = date.toLocaleString('en-US', { month: 'short' });
+      const month = date.toLocaleString("en-US", { month: "short" });
       if (counts[month]) {
         if (r.status === "Present") counts[month].present++;
         else if (r.status === "Late") counts[month].late++;
@@ -95,7 +129,6 @@ const StudentDashboard = () => {
 
     return Object.values(counts);
   }, [history]);
-
 
   const studentToken = useMemo(() => {
     if (!user) return "";
@@ -120,10 +153,15 @@ const StudentDashboard = () => {
   return (
     <DashboardLayout role="student">
       <div className="max-w-6xl mx-auto space-y-6">
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Student Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-1">Welcome back, {user.firstName} {user.lastName}</p>
+            <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">
+              Student Dashboard
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Welcome back, {user.firstName} {user.lastName}
+            </p>
           </div>
           {history.length > 0 && (
             <div className="flex items-center gap-3 bg-success/5 border border-success/20 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-right-4 duration-500">
@@ -131,13 +169,26 @@ const StudentDashboard = () => {
                 <CheckCircle2 className="h-6 w-6 text-success" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] uppercase font-bold text-success tracking-wider leading-none mb-1">Last Recorded Scan</p>
+                <p className="text-[10px] uppercase font-bold text-success tracking-wider leading-none mb-1">
+                  Last Recorded Scan
+                </p>
                 <p className="text-sm font-bold text-foreground truncate">{history[0].eventName}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">{history[0].status} at {history[0].time} • {new Date(history[0].timestamp).toLocaleDateString()}</p>
+                <p className="text-[10px] text-muted-foreground uppercase">
+                  {history[0].status} at {history[0].time} •{" "}
+                  {new Date(history[0].timestamp).toLocaleDateString()}
+                </p>
               </div>
             </div>
           )}
         </div>
+
+        {/* Online / Offline Status Indicator */}
+        <OfflineStatusIndicator
+          isOnline={isOnline}
+          lastSyncTime={lastSyncTime}
+          isSyncing={isSyncing}
+          onManualSync={isOnline ? loadData : undefined}
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -156,39 +207,77 @@ const StudentDashboard = () => {
           ))}
         </div>
 
-        {/* Upcoming Events — full width so student sees event QR codes first */}
+        {/* Upcoming Events / Saved Offline Events */}
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-gold" />
-            Upcoming Events
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-gold" />
+              {isOnline ? "Upcoming Events" : "Saved Offline Events"}
+            </h2>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs gap-1.5 text-gold border-gold/30 hover:bg-gold/10"
+              onClick={() => navigate("/student/qr")}
+            >
+              <QrCode className="h-3.5 w-3.5" /> View My QR Codes
+            </Button>
+          </div>
+
           {upcomingEvents.length === 0 ? (
             <div className="py-8 text-center border-2 border-dashed rounded-xl border-muted">
               <Calendar className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-muted-foreground text-sm">No upcoming events scheduled</p>
+              <p className="text-muted-foreground text-sm">
+                {isOnline
+                  ? "No upcoming events scheduled"
+                  : "No saved event QR codes available. Please connect to the internet at least once."}
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {upcomingEvents.map((event) => (
-                <Card key={event.id} className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors">
+                <Card
+                  key={event.id}
+                  className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors"
+                >
                   <CardContent className="p-0">
                     <div className="p-4 space-y-3">
                       <div className="flex flex-wrap justify-between items-start gap-1">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.targetCourses.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'}`}>
-                          {event.targetCourses.length > 0 ? `${event.targetCourses.slice(0, 2).join(", ")}${event.targetCourses.length > 2 ? " +" : ""}` : 'Open to All'}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            event.targetCourses.length > 0
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                              : "bg-gold/10 text-gold"
+                          }`}
+                        >
+                          {event.targetCourses.length > 0
+                            ? `${event.targetCourses.slice(0, 2).join(", ")}${
+                                event.targetCourses.length > 2 ? " +" : ""
+                              }`
+                            : "Open to All"}
                         </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            event.status === "ongoing"
+                              ? "bg-success/10 text-success"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
                           {event.status}
                         </span>
                       </div>
                       <div>
-                        <h3 className="font-bold text-foreground group-hover:text-gold transition-colors leading-tight">{event.name}</h3>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{event.description}</p>
+                        <h3 className="font-bold text-foreground group-hover:text-gold transition-colors leading-tight">
+                          {event.name}
+                        </h3>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                          {event.description}
+                        </p>
                       </div>
                       <div className="space-y-1.5 pt-1">
                         <div className="flex items-center text-xs text-muted-foreground gap-2">
-                          <Calendar className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                          <Calendar className="h-3.5 w-3.5 shrink-0 text-gold" />
+                          <span className="truncate">{event.date}</span>
                         </div>
                         <div className="flex items-center text-xs text-muted-foreground gap-2">
                           <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -201,10 +290,10 @@ const StudentDashboard = () => {
                       </div>
                       <Button
                         size="sm"
-                        className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2"
+                        className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2 font-medium"
                         onClick={() => navigate(`/student/qr?event=${event.id}`)}
                       >
-                        Generate QR <ArrowRight className="ml-2 h-3 w-3" />
+                        Display QR <ArrowRight className="ml-2 h-3 w-3" />
                       </Button>
                     </div>
                   </CardContent>
@@ -220,17 +309,42 @@ const StudentDashboard = () => {
             <CardTitle className="text-base font-sans">Attendance Analytics</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6 pt-2">
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={240}>
               <BarChart data={monthlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 15%, 88%)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'hsl(220, 10%, 45%)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: 'hsl(220, 10%, 45%)' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                  cursor={{ fill: 'rgba(184, 146, 64, 0.05)' }}
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 11, fill: "hsl(220, 10%, 45%)" }}
+                  axisLine={false}
+                  tickLine={false}
                 />
-                <Bar dataKey="present" fill="hsl(142, 72%, 40%)" radius={[6, 6, 0, 0]} name="Present" barSize={20} />
-                <Bar dataKey="late" fill="hsl(38, 92%, 50%)" radius={[6, 6, 0, 0]} name="Late" barSize={20} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "hsl(220, 10%, 45%)" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border: "none",
+                    boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
+                  }}
+                  cursor={{ fill: "rgba(184, 146, 64, 0.05)" }}
+                />
+                <Bar
+                  dataKey="present"
+                  fill="hsl(142, 72%, 40%)"
+                  radius={[6, 6, 0, 0]}
+                  name="Present"
+                  barSize={20}
+                />
+                <Bar
+                  dataKey="late"
+                  fill="hsl(38, 92%, 50%)"
+                  radius={[6, 6, 0, 0]}
+                  name="Late"
+                  barSize={20}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -265,12 +379,13 @@ const StudentDashboard = () => {
                     <TableCell>{row.time}</TableCell>
                     <TableCell>
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
-                          ? "bg-success/10 text-success"
-                          : row.status === "Late"
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                          row.status === "Present"
+                            ? "bg-success/10 text-success"
+                            : row.status === "Late"
                             ? "bg-warning/10 text-warning"
                             : "bg-destructive/10 text-destructive"
-                          }`}
+                        }`}
                       >
                         {row.status}
                       </span>
@@ -287,13 +402,15 @@ const StudentDashboard = () => {
               </TableBody>
             </Table>
           </CardContent>
-          </Card>
+        </Card>
 
-        {/* Quick Scanner Access — moved to bottom so students see event QR codes first */}
+        {/* Quick Scanner Access */}
         <Card className="shadow-card">
           <CardHeader className="pb-3 px-6 pt-6">
             <CardTitle className="text-base font-sans">Quick Scanner Access</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">General-purpose QR code for non-event scans</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              General-purpose QR code for non-event scans
+            </p>
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row items-center gap-6 px-6 pb-6">
             <div className="bg-card p-4 rounded-xl border-2 border-gold/30 shrink-0">
@@ -308,11 +425,21 @@ const StudentDashboard = () => {
             <div className="flex flex-col gap-3 flex-1 min-w-0">
               <div>
                 <p className="text-sm font-semibold text-foreground">General Attendance QR</p>
-                <p className="text-xs text-muted-foreground mt-1">Use this code only if the admin asks for a general scan. For specific events, use the <strong>Generate QR</strong> buttons above.</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use this code only if the admin asks for a general scan. For specific events, use the{" "}
+                  <strong>Display QR</strong> buttons above.
+                </p>
               </div>
-              <p className="text-[10px] text-muted-foreground font-mono break-all opacity-70">ID: {user.studentId}</p>
-              <Button variant="outline" size="sm" className="w-fit" onClick={() => navigate("/student/qr")}>
-                View All Event QR Codes
+              <p className="text-[10px] text-muted-foreground font-mono break-all opacity-70">
+                ID: {user.studentId}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() => navigate("/student/qr")}
+              >
+                View All Saved Event QR Codes
               </Button>
             </div>
           </CardContent>
