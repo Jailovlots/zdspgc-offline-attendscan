@@ -5,6 +5,11 @@
     },
     "ios": {
       "bundleIdentifier": "com.jaicute.vite_react_shadcn_ts"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "44e59e1c-9f9d-47b6-a71e-8ed81a217541"
+      }
     }
   }
 }
