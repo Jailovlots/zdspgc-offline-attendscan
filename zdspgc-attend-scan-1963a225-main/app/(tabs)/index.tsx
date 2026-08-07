@@ -1,5 +1,4 @@
-import { useCameraPermissions, CameraView, BarcodeScanningResult } from 'expo-camera';
-<<<<<<< HEAD
+﻿import { useCameraPermissions, CameraView, BarcodeScanningResult } from 'expo-camera';
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity,
@@ -8,10 +7,10 @@ import {
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import Constants from 'expo-constants';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
- * Render deploy URL — the hosted web app & API backend.
+ * Render deploy URL â€” the hosted web app & API backend.
  * Change this whenever the deployment URL changes.
  */
 const DEPLOY_URL = 'https://attendwise-offline.onrender.com';
@@ -23,7 +22,7 @@ const DEPLOY_URL = 'https://attendwise-offline.onrender.com';
  */
 const getTargetUri = (): string => {
   if (Platform.OS === 'web') {
-    // Running inside a browser — use the current origin
+    // Running inside a browser â€” use the current origin
     if (typeof window !== 'undefined') {
       const { protocol, hostname, port } = window.location;
       return `${protocol}//${hostname}:${port || '3005'}`;
@@ -36,7 +35,7 @@ const getTargetUri = (): string => {
     return DEPLOY_URL;
   }
 
-  // ── Dev mode only: try to resolve the local Metro host ──────────────────
+  // â”€â”€ Dev mode only: try to resolve the local Metro host â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const hostUri = Constants.expoConfig?.hostUri ?? '';
   const hostIp = hostUri.split(':')[0];
 
@@ -56,14 +55,7 @@ const getTargetUri = (): string => {
 const escapeForJs = (str: string): string =>
   str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
-// ─── Component ────────────────────────────────────────────────────────────────
-=======
-import React, { useRef, useState } from 'react';
-import { Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
-import { WebView } from 'react-native-webview';
-import { syncAttendance, saveOfflineAttendance } from '../../utils/offlineAttendance';
-import { loadFromStorage, saveStudentInfo, saveSession, syncDataFromServer } from '../../utils/dataStorage';
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
+// â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function HomeScreen() {
   const TARGET_URI = getTargetUri();
@@ -73,139 +65,20 @@ export default function HomeScreen() {
   // Keep a ref in sync with state to avoid stale closures in callbacks
   const useNativeScannerRef = useRef(false);
   const [bridgeReady, setBridgeReady] = useState(false);
-<<<<<<< HEAD
   const [webViewError, setWebViewError] = useState<string | null>(null);
   const [webViewLoading, setWebViewLoading] = useState(true);
 
-=======
-  const [isOffline, setIsOffline] = useState(false);
-  const [studentInfo, setStudentInfo] = useState<any>(null);
-  const [session, setSession] = useState<any>(null);
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
   const webViewRef = useRef<WebView>(null);
-  // Cooldown ref – prevents the same QR being sent multiple times in quick succession
+  // Cooldown ref â€“ prevents the same QR being sent multiple times in quick succession
   const scanCooldownRef = useRef(false);
 
-<<<<<<< HEAD
   // Helper that updates both state and the ref together
   const setNativeScanner = (active: boolean) => {
     useNativeScannerRef.current = active;
     setUseNativeScanner(active);
-=======
-  const targetUri = 'https://zdspgc-offline-attendscan.onrender.com';
-
-  React.useEffect(() => {
-    const checkPermissions = async () => {
-      if (permission === null || (!permission.granted && permission.canAskAgain)) {
-        await requestPermission();
-      }
-    };
-    checkPermissions();
-    
-    // Step 1: load from phone (fast) - "Instant opening"
-    const initStorage = async () => {
-      const data = await loadFromStorage();
-      if (data.info) setStudentInfo(data.info);
-      if (data.session) setSession(data.session);
-    };
-    initStorage();
-  }, [permission, requestPermission]);
-
-  // Step 2: update from server (background)
-  const fetchFromAPI = async () => {
-    if (isOffline) return;
-    const data = await syncDataFromServer(session?.studentId, session?.role || 'student', targetUri);
-    if (data?.profile) setStudentInfo(data.profile);
-    if (data) console.log("✅ Data synced from server (Batched)");
   };
 
-  React.useEffect(() => {
-    const checkServer = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(`${targetUri}/api/health`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          if (isOffline) setIsOffline(false);
-          // Sync any offline attendance
-          try {
-            await syncAttendance(targetUri);
-          } catch (e) {
-            console.log("Error syncing offline records:", e);
-          }
-        }
-      } catch (error) {
-        console.log("Network error checking server:", error);
-        setIsOffline(true);
-      }
-    };
-    checkServer();
-    const interval = setInterval(checkServer, 1000 * 30); // Check every 30 seconds
-    
-    // Background sync when status changes to online
-    if (!isOffline) {
-        fetchFromAPI();
-    }
-    
-    return () => clearInterval(interval);
-  }, [isOffline, session]);
-
-  const onBarcodeScanned = async (result: BarcodeScanningResult) => {
-    if (useNativeScanner) {
-      console.log("Barcode scanned natively:", result.data);
-      setUseNativeScanner(false); // Switch back after successful scan
-      
-      try {
-        const now = Date.now();
-        const timeStr = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-        
-        const record = {
-          id: result.data,
-          studentId: result.data,
-          name: "Native Scan",
-          course: "N/A",
-          section: "N/A",
-          gender: "N/A",
-          time: timeStr,
-          status: "Present",
-          eventId: "EVT-GENERAL",
-          eventName: "Native Event",
-          timestamp: now,
-        };
-
-        const isOnline = !isOffline && bridgeReady;
-
-        if (isOnline) {
-          // normal API
-          try {
-            const res = await fetch(`${targetUri}/api/attendance`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(record)
-            });
-            
-            if (res.ok) {
-              Alert.alert("Success", "Scan recorded online");
-              return;
-            }
-          } catch (e) {
-            console.warn("Online save failed, falling back to offline", e);
-          }
-        }
-        
-        // offline save (fallback or explicit offline)
-        await saveOfflineAttendance(record);
-        Alert.alert("Offline Scan", "Saved locally. Will sync when online.");
-        
-      } catch (err) {
-        console.error("Failed to process scan: ", err);
-      }
-    }
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
-  };
-
-  // ── Request camera permissions on first render ──────────────────────────
+  // â”€â”€ Request camera permissions on first render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     (async () => {
       if (!permission?.granted && permission?.canAskAgain !== false) {
@@ -214,16 +87,16 @@ export default function HomeScreen() {
     })();
   }, []); // intentionally run only once
 
-  // ── Handle a barcode detected by the native camera ──────────────────────
+  // â”€â”€ Handle a barcode detected by the native camera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onBarcodeScanned = useCallback((result: BarcodeScanningResult) => {
-    // Use the ref (not state) to avoid stale closure — this value is always current
+    // Use the ref (not state) to avoid stale closure â€” this value is always current
     if (!useNativeScannerRef.current || !webViewRef.current) return;
     if (scanCooldownRef.current) return; // ignore repeated frames
 
     const data = result.data;
     if (!data) return;
 
-    // Activate cooldown — reset after 3 s so the admin can scan the next student
+    // Activate cooldown â€” reset after 3 s so the admin can scan the next student
     scanCooldownRef.current = true;
     setTimeout(() => {
       scanCooldownRef.current = false;
@@ -245,9 +118,9 @@ export default function HomeScreen() {
       true; // required for Android injectJavaScript
     `;
     webViewRef.current.injectJavaScript(script);
-  }, []); // No state deps needed — we use refs for current values
+  }, []); // No state deps needed â€” we use refs for current values
 
-  // ── Handle messages from the WebView (React app → native) ───────────────
+  // â”€â”€ Handle messages from the WebView (React app â†’ native) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -284,29 +157,29 @@ export default function HomeScreen() {
     }
   }, [permission?.granted, requestPermission]);
 
-  // ── Permission not yet determined ───────────────────────────────────────
+  // â”€â”€ Permission not yet determined â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (permission === null) {
     return (
       <SafeAreaView style={styles.centeredContainer}>
         <ActivityIndicator size="large" color="#EAB308" />
-        <Text style={styles.infoText}>Checking camera permissions…</Text>
+        <Text style={styles.infoText}>Checking camera permissionsâ€¦</Text>
       </SafeAreaView>
     );
   }
 
-  // ── Camera permanently denied ────────────────────────────────────────────
+  // â”€â”€ Camera permanently denied â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (!permission.granted && !permission.canAskAgain) {
     return (
       <SafeAreaView style={styles.centeredContainer}>
-        <Text style={styles.errorTitle}>📷 Camera Access Denied</Text>
+        <Text style={styles.errorTitle}>ðŸ“· Camera Access Denied</Text>
         <Text style={styles.infoText}>
-          Camera permission was denied permanently. Please enable it in your device Settings → Apps → AttendWise → Permissions.
+          Camera permission was denied permanently. Please enable it in your device Settings â†’ Apps â†’ AttendWise â†’ Permissions.
         </Text>
       </SafeAreaView>
     );
   }
 
-  // ── Web platform — just render an iframe ────────────────────────────────
+  // â”€â”€ Web platform â€” just render an iframe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (Platform.OS === 'web') {
     return (
       <View style={styles.container}>
@@ -322,29 +195,9 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-<<<<<<< HEAD
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-=======
-      {/* Bridge/Network Status Indicator */}
-      <View style={[styles.statusDot, { backgroundColor: isOffline ? '#EF4444' : (bridgeReady ? '#22C55E' : '#EAB308') }]} />
-      {isOffline && (
-        <View style={styles.offlineBanner}>
-          <View>
-            <Text style={styles.offlineText}>Server Unreachable - Operating Offline</Text>
-            {studentInfo && (
-              <Text style={styles.cachedInfoText}>
-                Logged in as: {studentInfo.name || "Student"}
-              </Text>
-            )}
-          </View>
-          <TouchableOpacity onPress={() => setUseNativeScanner(true)} style={styles.offlineScanBtn}>
-            <Text style={styles.offlineScanBtnText}>Open Native Scanner</Text>
-          </TouchableOpacity>
-        </View>
-      )}
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
 
-      {/* ── Bridge status indicator (small dot, top-right) ─────────────── */}
+      {/* â”€â”€ Bridge status indicator (small dot, top-right) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <View
         style={[
           styles.statusDot,
@@ -352,7 +205,7 @@ export default function HomeScreen() {
         ]}
       />
 
-      {/* ── Native camera overlay (shown when scanning) ─────────────────── */}
+      {/* â”€â”€ Native camera overlay (shown when scanning) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {useNativeScanner && (
         <View style={StyleSheet.absoluteFillObject}>
           <CameraView
@@ -374,13 +227,13 @@ export default function HomeScreen() {
               }}
               activeOpacity={0.8}
             >
-              <Text style={styles.cancelBtnText}>✕  Cancel Scan</Text>
+              <Text style={styles.cancelBtnText}>âœ•  Cancel Scan</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* ── WebView (the React web app) ──────────────────────────────────── */}
+      {/* â”€â”€ WebView (the React web app) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <WebView
         ref={webViewRef}
         source={{ uri: TARGET_URI }}
@@ -389,20 +242,19 @@ export default function HomeScreen() {
           // Hide (but keep alive) while native scanner is open
           useNativeScanner ? { height: 0, width: 0, opacity: 0 } : {},
         ]}
-        // ── Core settings ──────────────────────────────────
+        // â”€â”€ Core settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         javaScriptEnabled={true}
         domStorageEnabled={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={['*']}
-<<<<<<< HEAD
         mixedContentMode="always"
-        // ── Lifecycle ──────────────────────────────────────
+        // â”€â”€ Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         startInLoadingState={true}
         renderLoading={() => (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#EAB308" />
-            <Text style={styles.infoText}>Loading AttendWise…</Text>
+            <Text style={styles.infoText}>Loading AttendWiseâ€¦</Text>
             <Text style={styles.uriText}>{TARGET_URI}</Text>
           </View>
         )}
@@ -418,44 +270,19 @@ export default function HomeScreen() {
           const { nativeEvent } = syntheticEvent;
           if (nativeEvent.statusCode >= 500) {
             console.error('[WebView] HTTP error:', nativeEvent.statusCode);
-=======
-        onMessage={(event) => {
-          console.log("Message from WebView:", event.nativeEvent.data);
-          try {
-            const data = JSON.parse(event.nativeEvent.data);
-            if (data.type === 'START_NATIVE_SCAN') {
-              setUseNativeScanner(true);
-            } else if (data.type === 'PING') {
-              setBridgeReady(true);
-            } else if (data.type === 'AUTH_SUCCESS') {
-              // Save session and student info when login is successful in WebView
-              if (data.session) {
-                setSession(data.session);
-                saveSession(data.session);
-              }
-              if (data.student) {
-                setStudentInfo(data.student);
-                saveStudentInfo(data.student);
-              }
-              console.log("✅ Session saved from WebView");
-            }
-          } catch (e) {
-            console.error("WebView message error:", e);
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
           }
         }}
-        // ── Message bridge ─────────────────────────────────
+        // â”€â”€ Message bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         onMessage={onWebViewMessage}
-        // ── Android camera permission passthrough ──────────
+        // â”€â”€ Android camera permission passthrough â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // @ts-expect-error onPermissionRequest is valid on Android
         onPermissionRequest={(event: any) => event.grant()}
       />
 
-<<<<<<< HEAD
-      {/* ── WebView error overlay ────────────────────────────────────────── */}
+      {/* â”€â”€ WebView error overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {webViewError && (
         <View style={styles.errorOverlay}>
-          <Text style={styles.errorTitle}>⚠️ Connection Error</Text>
+          <Text style={styles.errorTitle}>âš ï¸ Connection Error</Text>
           <Text style={styles.errorMessage}>{webViewError}</Text>
           <TouchableOpacity
             style={styles.retryBtn}
@@ -468,26 +295,13 @@ export default function HomeScreen() {
           >
             <Text style={styles.retryBtnText}>Retry</Text>
           </TouchableOpacity>
-=======
-      {/* Instant Data Footer (Always visible if logged in) */}
-      {!useNativeScanner && studentInfo && (
-        <View style={styles.footerInfo}>
-          <View style={styles.footerLeft}>
-             <Text style={styles.footerLabel}>STUDENT</Text>
-             <Text style={styles.footerName}>{studentInfo.name}</Text>
-          </View>
-          <View style={styles.footerRight}>
-             <Text style={styles.footerLabel}>ID NUMBER</Text>
-             <Text style={styles.footerId}>{studentInfo.studentId || studentInfo.id}</Text>
-          </View>
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
         </View>
       )}
     </SafeAreaView>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const styles = StyleSheet.create({
   container: {
@@ -495,48 +309,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   },
-<<<<<<< HEAD
   centeredContainer: {
-=======
-  statusDot: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 40 : 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    zIndex: 9999,
-    elevation: 9999,
-  },
-  offlineBanner: {
-    backgroundColor: '#EF4444',
-    padding: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  offlineText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  offlineScanBtn: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 5,
-  },
-  offlineScanBtnText: {
-    color: '#EF4444',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  webview: {
-    flex: 1,
-  },
-  permissionContainer: {
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -560,7 +333,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.1)',
   },
 
-  // ── Scanner overlay ────────────────────────────────────────────────────
+  // â”€â”€ Scanner overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   scannerOverlay: {
     flex: 1,
     alignItems: 'center',
@@ -604,7 +377,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ── Loading / error UI ────────────────────────────────────────────────
+  // â”€â”€ Loading / error UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#fff',
