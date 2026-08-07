@@ -17,18 +17,15 @@ const PORT = process.env.PORT || 3002;
 
 app.use(compression());
 app.use(cors());
-<<<<<<< HEAD
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-=======
-app.use(express.json());
 
 // API Root Status Route
 // Moved to /api/status so it doesn't break React frontend loading on '/'
 app.get("/api/status", (req, res) => {
   res.send("API is running");
 });
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
+
 // Serve static frontend files with CDN/Browser caching enabled
 app.use(express.static(path.join(__dirname, '../dist'), {
   setHeaders: (res, filePath) => {
