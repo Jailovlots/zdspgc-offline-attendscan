@@ -14,7 +14,7 @@ import Constants from 'expo-constants';
  * Render deploy URL — the hosted web app & API backend.
  * Change this whenever the deployment URL changes.
  */
-const DEPLOY_URL = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
+const DEPLOY_URL = 'https://attendwise-offline.onrender.com';
 
 /**
  * Resolve the web server URI.
