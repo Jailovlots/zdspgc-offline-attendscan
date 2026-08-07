@@ -223,7 +223,6 @@ const StudentDashboard = () => {
               <Calendar className="h-5 w-5 text-gold" />
               {isOnline ? "Upcoming Events" : "Saved Offline Events"}
             </h2>
-<<<<<<< HEAD
             <Button
               variant="outline"
               size="sm"
@@ -296,65 +295,8 @@ const StudentDashboard = () => {
                         <div className="flex items-center text-xs text-muted-foreground gap-2">
                           <MapPin className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{event.location}</span>
-=======
-            <div className="grid sm:grid-cols-2 gap-4">
-              {isLoading ? (
-                // Events Skeleton
-                [1, 2].map(i => (
-                  <Card key={i} className="shadow-card animate-pulse">
-                     <CardContent className="p-4 flex gap-4">
-                        <div className="h-12 w-12 skeleton shrink-0" />
-                        <div className="space-y-2 w-full">
-                           <div className="h-3 w-1/3 skeleton" />
-                           <div className="h-2 w-1/2 skeleton" />
-                           <div className="h-8 w-full skeleton mt-2" />
                         </div>
-                     </CardContent>
-                  </Card>
-                ))
-              ) : upcomingEvents.length > 0 ? (
-                upcomingEvents.map((event) => (
-                  <Card key={event.id} className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors">
-                    <CardContent className="p-0">
-                      <div className="p-4 space-y-3">
-                        <div className="flex justify-between items-start">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.category === 'course-specific' ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'
-                            }`}>
-                            {event.category === 'course-specific' ? `${event.targetCourses[0]} Special` : 'Open to All'}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
-                            }`}>
-                            {event.status}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-foreground group-hover:text-gold transition-colors">{event.name}</h3>
-                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{event.description}</p>
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
-                        </div>
-                        <div className="space-y-1.5 pt-1">
-                          <div className="flex items-center text-xs text-muted-foreground gap-2">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span>{new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-                          </div>
-                          <div className="flex items-center text-xs text-muted-foreground gap-2">
-                            <Clock className="h-3.5 w-3.5" />
-                            <span>{event.time}</span>
-                          </div>
-                          <div className="flex items-center text-xs text-muted-foreground gap-2">
-                            <MapPin className="h-3.5 w-3.5" />
-                            <span className="truncate">{event.location}</span>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2"
-                          onClick={() => navigate(`/student/qr?event=${event.id}`)}
-                        >
-                          Generate QR <ArrowRight className="ml-2 h-3 w-3" />
-                        </Button>
                       </div>
-<<<<<<< HEAD
                       <Button
                         size="sm"
                         className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2 font-medium"
@@ -366,16 +308,6 @@ const StudentDashboard = () => {
                   </CardContent>
                 </Card>
               ))}
-=======
-                    </CardContent>
-                  </Card>
-                ))
-              ) : (
-                <div className="col-span-full py-8 text-center border-2 border-dashed rounded-xl border-muted">
-                  <p className="text-muted-foreground text-sm">No upcoming events scheduled</p>
-                </div>
-              )}
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
             </div>
           )}
         </div>
@@ -460,28 +392,6 @@ const StudentDashboard = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-<<<<<<< HEAD
-                {history.slice(0, 10).map((row, i) => (
-                  <TableRow key={row.timestamp + i}>
-                    <TableCell className="font-medium">
-                      {new Date(row.timestamp).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px] whitespace-nowrap bg-background">
-                        {row.eventName || "General Attendance"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{row.time}</TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                          row.status === "Present"
-                            ? "bg-success/10 text-success"
-                            : row.status === "Late"
-                            ? "bg-warning/10 text-warning"
-                            : "bg-destructive/10 text-destructive"
-                        }`}
-=======
                 {isHistoryLoaded ? (
                   history.slice(0, 10).map((row, i) => (
                     <TableRow key={row.timestamp + i}>
@@ -496,12 +406,13 @@ const StudentDashboard = () => {
                       <TableCell>{row.time}</TableCell>
                       <TableCell>
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
-                            ? "bg-success/10 text-success"
-                            : row.status === "Late"
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            row.status === "Present"
+                              ? "bg-success/10 text-success"
+                              : row.status === "Late"
                               ? "bg-warning/10 text-warning"
                               : "bg-destructive/10 text-destructive"
-                            }`}
+                          }`}
                         >
                           {row.status}
                         </span>
@@ -516,7 +427,6 @@ const StudentDashboard = () => {
                         variant="ghost" 
                         disabled={isHistoryLoading}
                         className="text-gold hover:bg-gold/5"
->>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
                       >
                         {isHistoryLoading ? (
                           <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
