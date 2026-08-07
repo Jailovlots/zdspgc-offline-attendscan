@@ -1,4 +1,5 @@
 import { useCameraPermissions, CameraView, BarcodeScanningResult } from 'expo-camera';
+<<<<<<< HEAD
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity,
@@ -56,6 +57,13 @@ const escapeForJs = (str: string): string =>
   str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
 // ─── Component ────────────────────────────────────────────────────────────────
+=======
+import React, { useRef, useState } from 'react';
+import { Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
+import { WebView } from 'react-native-webview';
+import { syncAttendance, saveOfflineAttendance } from '../../utils/offlineAttendance';
+import { loadFromStorage, saveStudentInfo, saveSession, syncDataFromServer } from '../../utils/dataStorage';
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
 
 export default function HomeScreen() {
   const TARGET_URI = getTargetUri();
@@ -65,17 +73,136 @@ export default function HomeScreen() {
   // Keep a ref in sync with state to avoid stale closures in callbacks
   const useNativeScannerRef = useRef(false);
   const [bridgeReady, setBridgeReady] = useState(false);
+<<<<<<< HEAD
   const [webViewError, setWebViewError] = useState<string | null>(null);
   const [webViewLoading, setWebViewLoading] = useState(true);
 
+=======
+  const [isOffline, setIsOffline] = useState(false);
+  const [studentInfo, setStudentInfo] = useState<any>(null);
+  const [session, setSession] = useState<any>(null);
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
   const webViewRef = useRef<WebView>(null);
   // Cooldown ref – prevents the same QR being sent multiple times in quick succession
   const scanCooldownRef = useRef(false);
 
+<<<<<<< HEAD
   // Helper that updates both state and the ref together
   const setNativeScanner = (active: boolean) => {
     useNativeScannerRef.current = active;
     setUseNativeScanner(active);
+=======
+  const targetUri = 'https://zdspgc-offline-attendscan.onrender.com';
+
+  React.useEffect(() => {
+    const checkPermissions = async () => {
+      if (permission === null || (!permission.granted && permission.canAskAgain)) {
+        await requestPermission();
+      }
+    };
+    checkPermissions();
+    
+    // Step 1: load from phone (fast) - "Instant opening"
+    const initStorage = async () => {
+      const data = await loadFromStorage();
+      if (data.info) setStudentInfo(data.info);
+      if (data.session) setSession(data.session);
+    };
+    initStorage();
+  }, [permission, requestPermission]);
+
+  // Step 2: update from server (background)
+  const fetchFromAPI = async () => {
+    if (isOffline) return;
+    const data = await syncDataFromServer(session?.studentId, session?.role || 'student', targetUri);
+    if (data?.profile) setStudentInfo(data.profile);
+    if (data) console.log("✅ Data synced from server (Batched)");
+  };
+
+  React.useEffect(() => {
+    const checkServer = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(`${targetUri}/api/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          if (isOffline) setIsOffline(false);
+          // Sync any offline attendance
+          try {
+            await syncAttendance(targetUri);
+          } catch (e) {
+            console.log("Error syncing offline records:", e);
+          }
+        }
+      } catch (error) {
+        console.log("Network error checking server:", error);
+        setIsOffline(true);
+      }
+    };
+    checkServer();
+    const interval = setInterval(checkServer, 1000 * 30); // Check every 30 seconds
+    
+    // Background sync when status changes to online
+    if (!isOffline) {
+        fetchFromAPI();
+    }
+    
+    return () => clearInterval(interval);
+  }, [isOffline, session]);
+
+  const onBarcodeScanned = async (result: BarcodeScanningResult) => {
+    if (useNativeScanner) {
+      console.log("Barcode scanned natively:", result.data);
+      setUseNativeScanner(false); // Switch back after successful scan
+      
+      try {
+        const now = Date.now();
+        const timeStr = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+        
+        const record = {
+          id: result.data,
+          studentId: result.data,
+          name: "Native Scan",
+          course: "N/A",
+          section: "N/A",
+          gender: "N/A",
+          time: timeStr,
+          status: "Present",
+          eventId: "EVT-GENERAL",
+          eventName: "Native Event",
+          timestamp: now,
+        };
+
+        const isOnline = !isOffline && bridgeReady;
+
+        if (isOnline) {
+          // normal API
+          try {
+            const res = await fetch(`${targetUri}/api/attendance`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(record)
+            });
+            
+            if (res.ok) {
+              Alert.alert("Success", "Scan recorded online");
+              return;
+            }
+          } catch (e) {
+            console.warn("Online save failed, falling back to offline", e);
+          }
+        }
+        
+        // offline save (fallback or explicit offline)
+        await saveOfflineAttendance(record);
+        Alert.alert("Offline Scan", "Saved locally. Will sync when online.");
+        
+      } catch (err) {
+        console.error("Failed to process scan: ", err);
+      }
+    }
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
   };
 
   // ── Request camera permissions on first render ──────────────────────────
@@ -195,7 +322,27 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+<<<<<<< HEAD
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+=======
+      {/* Bridge/Network Status Indicator */}
+      <View style={[styles.statusDot, { backgroundColor: isOffline ? '#EF4444' : (bridgeReady ? '#22C55E' : '#EAB308') }]} />
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <View>
+            <Text style={styles.offlineText}>Server Unreachable - Operating Offline</Text>
+            {studentInfo && (
+              <Text style={styles.cachedInfoText}>
+                Logged in as: {studentInfo.name || "Student"}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity onPress={() => setUseNativeScanner(true)} style={styles.offlineScanBtn}>
+            <Text style={styles.offlineScanBtnText}>Open Native Scanner</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
 
       {/* ── Bridge status indicator (small dot, top-right) ─────────────── */}
       <View
@@ -248,6 +395,7 @@ export default function HomeScreen() {
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={['*']}
+<<<<<<< HEAD
         mixedContentMode="always"
         // ── Lifecycle ──────────────────────────────────────
         startInLoadingState={true}
@@ -270,6 +418,30 @@ export default function HomeScreen() {
           const { nativeEvent } = syntheticEvent;
           if (nativeEvent.statusCode >= 500) {
             console.error('[WebView] HTTP error:', nativeEvent.statusCode);
+=======
+        onMessage={(event) => {
+          console.log("Message from WebView:", event.nativeEvent.data);
+          try {
+            const data = JSON.parse(event.nativeEvent.data);
+            if (data.type === 'START_NATIVE_SCAN') {
+              setUseNativeScanner(true);
+            } else if (data.type === 'PING') {
+              setBridgeReady(true);
+            } else if (data.type === 'AUTH_SUCCESS') {
+              // Save session and student info when login is successful in WebView
+              if (data.session) {
+                setSession(data.session);
+                saveSession(data.session);
+              }
+              if (data.student) {
+                setStudentInfo(data.student);
+                saveStudentInfo(data.student);
+              }
+              console.log("✅ Session saved from WebView");
+            }
+          } catch (e) {
+            console.error("WebView message error:", e);
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
           }
         }}
         // ── Message bridge ─────────────────────────────────
@@ -279,6 +451,7 @@ export default function HomeScreen() {
         onPermissionRequest={(event: any) => event.grant()}
       />
 
+<<<<<<< HEAD
       {/* ── WebView error overlay ────────────────────────────────────────── */}
       {webViewError && (
         <View style={styles.errorOverlay}>
@@ -295,6 +468,19 @@ export default function HomeScreen() {
           >
             <Text style={styles.retryBtnText}>Retry</Text>
           </TouchableOpacity>
+=======
+      {/* Instant Data Footer (Always visible if logged in) */}
+      {!useNativeScanner && studentInfo && (
+        <View style={styles.footerInfo}>
+          <View style={styles.footerLeft}>
+             <Text style={styles.footerLabel}>STUDENT</Text>
+             <Text style={styles.footerName}>{studentInfo.name}</Text>
+          </View>
+          <View style={styles.footerRight}>
+             <Text style={styles.footerLabel}>ID NUMBER</Text>
+             <Text style={styles.footerId}>{studentInfo.studentId || studentInfo.id}</Text>
+          </View>
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
         </View>
       )}
     </SafeAreaView>
@@ -309,7 +495,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   },
+<<<<<<< HEAD
   centeredContainer: {
+=======
+  statusDot: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 40 : 10,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  offlineBanner: {
+    backgroundColor: '#EF4444',
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  offlineScanBtn: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
+  },
+  offlineScanBtnText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  webview: {
+    flex: 1,
+  },
+  permissionContainer: {
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -429,4 +656,52 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
+  cachedInfoText: {
+    color: 'white',
+    fontSize: 10,
+    opacity: 0.8,
+  },
+  footerInfo: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  footerLabel: {
+    fontSize: 8,
+    color: '#888',
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  footerName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+  },
+  footerId: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  footerLeft: {
+    flex: 2,
+  },
+  footerRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  }
 });

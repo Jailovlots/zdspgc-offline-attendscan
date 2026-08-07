@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Users, CheckCircle2, Clock, XCircle, Camera, Download, Search, LayoutGrid, List } from "lucide-react";
+import { Users, CheckCircle2, Clock, XCircle, Camera, Download, Search, LayoutGrid, List, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import DashboardLayout from "@/components/DashboardLayout";
 import { getAllStudents, getAttendanceRecords, getCourseSections, getSession, type AttendanceRecord, type StudentUser } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
-import { exportToCsv } from "@/lib/exportUtils";
+import { exportToCsv, type CSVSection } from "@/lib/exportUtils";
 import { toast } from "sonner";
 
 const getTodayDateString = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
@@ -43,7 +43,51 @@ const AdminDashboard = () => {
   const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
   const [registeredUsers, setRegisteredUsers] = useState<StudentUser[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // show skeletons on first load
+  const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
+  const [isAttendanceLoaded, setIsAttendanceLoaded] = useState(false);
+
+  // Conceptual helpers for the requested "system" logic
+  const setScreen = (name: string) => console.log(`Screen set to: ${name}`);
+  
+  // STEP 1: Load ONLY important data on start (Batch Init)
+  const fetchData = async () => {
+    try {
+      const initData = await getDashboardInitData(undefined, 'admin');
+      
+      if (initData) {
+        if (initData.students) setRegisteredUsers(initData.students);
+        if (initData.sections) setCourseSections(initData.sections);
+      }
+    } catch (err) {
+      console.error("Dashboard basic info load failed:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // STEP 2: Load Attendance history later when user clicks
+  const loadAttendanceData = async () => {
+    if (isAttendanceLoaded) return;
+    setIsAttendanceLoading(true);
+    try {
+      const records = await getAttendanceRecords();
+      
+      // Filter records by the specific selectedDate (YYYY-MM-DD)
+      setAttendanceRecords(records.filter(r => {
+        const recordDate = new Date(r.timestamp).toLocaleDateString('en-CA'); // YYYY-MM-DD
+        return recordDate === selectedDate;
+      }));
+      
+      setIsAttendanceLoaded(true);
+      toast.success("Attendance history loaded");
+    } catch (err) {
+      console.error("Failed to load attendance records:", err);
+      toast.error("Failed to load attendance records");
+    } finally {
+      setIsAttendanceLoading(false);
+    }
+  };
 
   const COURSES = useMemo(() => ["All", ...Object.keys(courseSections).sort()], [courseSections]);
   const todayStr = getTodayDateString();
@@ -169,10 +213,10 @@ const AdminDashboard = () => {
       : registeredUsers.filter(u => u.course === selectedCourse).length;
 
     return [
-      { label: "Total Students", value: totalRegistered.toString(), icon: Users, color: "text-foreground" },
-      { label: "Present Today", value: stats.present.toString(), icon: CheckCircle2, color: "text-success" },
-      { label: "Late Today", value: stats.late.toString(), icon: Clock, color: "text-warning" },
-      { label: "Absent Today", value: stats.absent.toString(), icon: XCircle, color: "text-destructive" },
+      { label: "Total Students", value: isLoading ? "—" : totalRegistered.toString(), icon: Users, color: "text-foreground" },
+      { label: "Present Today", value: isAttendanceLoaded ? stats.present.toString() : "—", icon: CheckCircle2, color: "text-success" },
+      { label: "Late Today", value: isAttendanceLoaded ? stats.late.toString() : "—", icon: Clock, color: "text-warning" },
+      { label: "Absent Today", value: isAttendanceLoaded ? stats.absent.toString() : "—", icon: XCircle, color: "text-destructive" },
     ];
   }, [stats, registeredUsers, selectedCourse]);
 
@@ -265,14 +309,14 @@ const AdminDashboard = () => {
     const courseLabel = selectedCourse === "All" ? "All Courses" : selectedCourse;
     const dateLabel = selectedDate;
 
-    const sections = [
+    const sections: CSVSection[] = [
       {
         title: `AttendWise Attendance Record`,
         rows: [
           ["Course/Department", courseLabel],
           ["Attendance Date", dateLabel],
           ["Export Generated", new Date().toLocaleString()],
-        ]
+        ],
       },
       {
         title: "Summary Statistics",
@@ -281,26 +325,51 @@ const AdminDashboard = () => {
           ["Present", stats.present],
           ["Late", stats.late],
           ["Absent", stats.absent],
-          ["Attendance Rate", stats.total > 0 ? `${Math.round(((stats.present + stats.late) / stats.total) * 100)}%` : "0%"],
-        ]
+          [
+            "Attendance Rate",
+            stats.total > 0 ? `${Math.round(((stats.present + stats.late) / stats.total) * 100)}%` : "0%",
+          ],
+        ],
       },
       {
         title: "Gender Breakdown",
         rows: [
           ["Male (Present/Total)", `${genderStats.male.attended} / ${genderStats.male.total}`],
           ["Female (Present/Total)", `${genderStats.female.attended} / ${genderStats.female.total}`],
-        ]
+        ],
       },
       {
         title: "Detailed Attendance Log",
         headers: ["Student ID", "Full Name", "Course", "Year", "Section", "Gender", "Event", "Status", "Time"],
-        rows: filteredScans.map(s => [
-          s.id, s.name, s.course, s.year, s.section, s.gender, s.eventName, s.time, s.status
-        ])
-      }
+        rows: [...filteredScans]
+          .sort((a, b) => {
+            // Priority: Course -> Year -> Section -> Name
+            const courseComp = a.course.localeCompare(b.course);
+            if (courseComp !== 0) return courseComp;
+            
+            const yearComp = a.year.localeCompare(b.year);
+            if (yearComp !== 0) return yearComp;
+            
+            const sectionComp = a.section.localeCompare(b.section);
+            if (sectionComp !== 0) return sectionComp;
+            
+            return a.name.localeCompare(b.name);
+          })
+          .map((s) => [
+          s.id,
+          s.name,
+          s.course,
+          s.year,
+          s.section,
+          s.gender,
+          s.eventName,
+          s.status,
+          s.time,
+        ]),
+      },
     ];
 
-    const fileName = `Attendance_Record_${courseLabel.replace(/\s+/g, "_")}_${dateLabel}.csv`;
+    const fileName = `Attendance_${courseLabel.replace(/\s+/g, "_")}_${dateLabel}.csv`;
     exportToCsv(fileName, sections);
     toast.success("Attendance record exported");
   };
@@ -317,7 +386,6 @@ const AdminDashboard = () => {
       </DashboardLayout>
     );
   }
-
   return (
     <DashboardLayout role="admin" adminRole={adminRole}>
       <div className="max-w-7xl mx-auto space-y-6">
@@ -384,19 +452,34 @@ const AdminDashboard = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {adminStats.map((s) => (
-            <Card key={s.label} className="shadow-card">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
-                  <s.icon className={`h-5 w-5 ${s.color}`} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{s.value}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {isLoading ? (
+            // Stats Skeleton
+            [1, 2, 3, 4].map((i) => (
+              <Card key={i} className="shadow-card border-none bg-white/50 animate-pulse">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 skeleton shrink-0" />
+                  <div className="space-y-2">
+                    <div className="h-2 w-16 skeleton" />
+                    <div className="h-4 w-12 skeleton" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            adminStats.map((s) => (
+              <Card key={s.label} className="shadow-card">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                    <s.icon className={`h-5 w-5 ${s.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">{s.value}</p>
+                    <p className="text-xs text-muted-foreground">{s.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Gender Summary */}
@@ -438,7 +521,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Charts */}
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid lg:grid-cols-3 gap-6 relative">
           <Card className="shadow-card">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-sans">
@@ -507,10 +590,6 @@ const AdminDashboard = () => {
                       <Bar dataKey="maleLate" stackId="male" fill="hsl(217, 91%, 75%)" radius={[0, 0, 0, 0]} name="Male Late" />
                       <Bar dataKey="maleAbsent" stackId="male" fill="hsl(217, 91%, 90%)" radius={[0, 3, 3, 0]} name="Male Absent" />
 
-                      {/* Gap - Recharts doesn't handle spacing between stack groups well in vertical layout easily, 
-                          but having different stackIds will place them next to each other automatically if we use a grouped layout.
-                          Actually, in vertical layout, multiple bars with different stackIds in the same category will be grouped side-by-side. */}
-
                       {/* Female Stack */}
                       <Bar dataKey="femalePresent" stackId="female" fill="hsl(330, 81%, 60%)" radius={[0, 0, 0, 0]} name="Female Present" />
                       <Bar dataKey="femaleLate" stackId="female" fill="hsl(330, 81%, 75%)" radius={[0, 0, 0, 0]} name="Female Late" />
@@ -521,6 +600,30 @@ const AdminDashboard = () => {
               ))}
             </CardContent>
           </Card>
+
+          {!isAttendanceLoaded && (
+            <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] flex flex-col items-center justify-center rounded-xl z-10">
+              <div className="bg-background/90 p-6 rounded-2xl shadow-2xl border flex flex-col items-center max-w-xs text-center">
+                <div className="h-12 w-12 rounded-full bg-gold/10 flex items-center justify-center mb-4 text-gold">
+                  <Download className="h-6 w-6" />
+                </div>
+                <h3 className="text-sm font-bold mb-1">Analytics Ready</h3>
+                <p className="text-xs text-muted-foreground mb-4">Click to load today's attendance data and populate charts.</p>
+                <Button 
+                  onClick={loadAttendanceData} 
+                  disabled={isAttendanceLoading}
+                  className="bg-gold text-gold-foreground hover:bg-gold/90 w-full"
+                >
+                  {isAttendanceLoading ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Load Today's Stats
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Recent Scans */}
@@ -558,126 +661,148 @@ const AdminDashboard = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {viewMode === "grouped" ? (
-              Object.entries(groupedScans).map(([course, years]) => (
-                <div key={course}>
-                  <h3 className="text-sm font-bold text-foreground mb-3">{course}</h3>
-                  {Object.entries(years).map(([year, sections]) => (
-                    <div key={`${course}-${year}`} className="mb-4 ml-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{year}</p>
-                      {Object.entries(sections).map(([section, scans]) => (
-                        <div key={section} className="mb-3 ml-2">
-                          <p className="text-xs font-medium text-foreground/70 mb-1">📋 {section}</p>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Student ID</TableHead>
-                                <TableHead>Name</TableHead>
-                                 <TableHead>Gender</TableHead>
-                                 <TableHead>Event</TableHead>
-                                 <TableHead>Time</TableHead>
-                                 <TableHead>Status</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {scans.map((row) => (
-                                <TableRow key={row.id}>
-                                  <TableCell className="font-mono text-sm">{row.id}</TableCell>
-                                  <TableCell className="font-medium">{row.name}</TableCell>
-                                  <TableCell>
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.gender === 'Male' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
-                                      {row.gender?.toUpperCase()}
-                                    </span>
-                                  </TableCell>
-                                   <TableCell>
-                                     <Badge variant="outline" className="text-[10px] whitespace-nowrap">
-                                       {row.eventName}
-                                     </Badge>
-                                   </TableCell>
-                                   <TableCell>{row.time}</TableCell>
-                                  <TableCell>
-                                    <span
-                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
-                                        ? "bg-success/10 text-success"
-                                        : "bg-warning/10 text-warning"
-                                        }`}
-                                    >
-                                      {row.status}
-                                    </span>
-                                  </TableCell>
+            {isAttendanceLoaded ? (
+              viewMode === "grouped" ? (
+                Object.entries(groupedScans).map(([course, years]) => (
+                  <div key={course}>
+                    <h3 className="text-sm font-bold text-foreground mb-3">{course}</h3>
+                    {Object.entries(years).map(([year, sections]) => (
+                      <div key={`${course}-${year}`} className="mb-4 ml-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{year}</p>
+                        {Object.entries(sections).map(([section, scans]) => (
+                          <div key={section} className="mb-3 ml-2">
+                            <p className="text-xs font-medium text-foreground/70 mb-1">📋 {section}</p>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Student ID</TableHead>
+                                  <TableHead>Name</TableHead>
+                                   <TableHead>Gender</TableHead>
+                                   <TableHead>Event</TableHead>
+                                   <TableHead>Time</TableHead>
+                                   <TableHead>Status</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              ))
-            ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="w-[120px]">Student ID</TableHead>
-                      <TableHead>Full Name</TableHead>
-                       <TableHead>Course & Section</TableHead>
-                       <TableHead>Event</TableHead>
-                       <TableHead className="w-[100px]">Gender</TableHead>
-                       <TableHead className="w-[120px]">Time</TableHead>
-                       <TableHead className="w-[100px] text-right">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredScans.length > 0 ? (
-                      filteredScans.map((row) => (
-                        <TableRow key={row.id} className="hover:bg-muted/30">
-                          <TableCell className="font-mono text-sm font-medium">{row.id}</TableCell>
-                          <TableCell>
-                            <div>
-                              <p className="font-semibold text-sm">{row.name}</p>
-                              <p className="text-[10px] text-muted-foreground uppercase">{row.year} Year</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-xs">
-                              <span className="font-bold text-primary">{row.course}</span>
-                              <span className="mx-1 text-muted-foreground">•</span>
-                               <span className="text-muted-foreground">{row.section}</span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             <Badge variant="outline" className="text-[10px] whitespace-nowrap">
-                               {row.eventName}
-                             </Badge>
-                           </TableCell>
-                           <TableCell>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.gender === 'Male' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
-                              {row.gender?.toUpperCase()}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{row.time}</TableCell>
-                          <TableCell className="text-right">
-                            <span 
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                row.status === "Present" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
-                              }`}
-                            >
-                              {row.status}
-                            </span>
+                              </TableHeader>
+                              <TableBody>
+                                {scans.map((row) => (
+                                  <TableRow key={row.id}>
+                                    <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                                    <TableCell className="font-medium">{row.name}</TableCell>
+                                    <TableCell>
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.gender === 'Male' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
+                                        {row.gender?.toUpperCase()}
+                                      </span>
+                                    </TableCell>
+                                     <TableCell>
+                                       <Badge variant="outline" className="text-[10px] whitespace-nowrap">
+                                         {row.eventName}
+                                       </Badge>
+                                     </TableCell>
+                                     <TableCell>{row.time}</TableCell>
+                                    <TableCell>
+                                      <span
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
+                                          ? "bg-success/10 text-success"
+                                          : "bg-warning/10 text-warning"
+                                          }`}
+                                      >
+                                        {row.status}
+                                      </span>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="w-[120px]">Student ID</TableHead>
+                        <TableHead>Full Name</TableHead>
+                         <TableHead>Course & Section</TableHead>
+                         <TableHead>Event</TableHead>
+                         <TableHead className="w-[100px]">Gender</TableHead>
+                         <TableHead className="w-[120px]">Time</TableHead>
+                         <TableHead className="w-[100px] text-right">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredScans.length > 0 ? (
+                        filteredScans.map((row) => (
+                          <TableRow key={row.id} className="hover:bg-muted/30">
+                            <TableCell className="font-mono text-sm font-medium">{row.id}</TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-semibold text-sm">{row.name}</p>
+                                <p className="text-[10px] text-muted-foreground uppercase">{row.year} Year</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-xs">
+                                <span className="font-bold text-primary">{row.course}</span>
+                                <span className="mx-1 text-muted-foreground">•</span>
+                                 <span className="text-muted-foreground">{row.section}</span>
+                               </div>
+                             </TableCell>
+                             <TableCell>
+                               <Badge variant="outline" className="text-[10px] whitespace-nowrap">
+                                 {row.eventName}
+                               </Badge>
+                             </TableCell>
+                             <TableCell>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.gender === 'Male' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
+                                {row.gender?.toUpperCase()}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{row.time}</TableCell>
+                            <TableCell className="text-right">
+                              <span 
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  row.status === "Present" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                                }`}
+                              >
+                                {row.status}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                            No attendance records found for the selected filters.
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                          No attendance records found for the selected filters.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )
+            ) : (
+              <div className="py-20 text-center border-2 border-dashed rounded-xl border-muted">
+                <Download className="h-10 w-10 mx-auto mb-4 text-muted-foreground opacity-20" />
+                <h3 className="text-lg font-semibold text-foreground mb-2">Detailed Attendance Logs</h3>
+                <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
+                  To optimize performance, detailed attendance logs and reports are loaded only on request.
+                </p>
+                <Button 
+                  onClick={loadAttendanceData} 
+                  disabled={isAttendanceLoading}
+                  className="bg-gold text-gold-foreground hover:bg-gold/90"
+                >
+                  {isAttendanceLoading ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Load All Attendance Records
+                </Button>
               </div>
             )}
           </CardContent>

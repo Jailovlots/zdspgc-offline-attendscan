@@ -10,7 +10,10 @@ dotenv.config();
 const poolConfig = process.env.DATABASE_URL
   ? { 
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
     }
   : {
       user: process.env.PGUSER || 'postgres',
@@ -22,6 +25,13 @@ const poolConfig = process.env.DATABASE_URL
 
 if (process.env.DATABASE_URL) {
   console.log('Database connecting via DATABASE_URL');
+} else if (process.env.RENDER || process.env.NODE_ENV === 'production') {
+  console.error('\n======================================================');
+  console.error('❌ CRITICAL: NO DATABASE CONFIGURED ON RENDER!');
+  console.error('Your app is running on Render, but you haven\'t added a DATABASE_URL.');
+  console.error('You must go to your Render.com Dashboard -> Environment tab,');
+  console.error('and add a custom PostgreSQL connection string (like from Neon.tech).');
+  console.error('======================================================\n');
 } else if (process.env.PGHOST) {
   console.log(`Database connecting to ${process.env.PGHOST}`);
 } else {
@@ -216,29 +226,32 @@ export const initDb = async () => {
     }
 
     // Migration for qualified_students table: firstname + lastname -> name
-
-    const hasNameCol = await db.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name='qualified_students' AND column_name='name'
-    `);
-    if (hasNameCol.rows.length === 0) {
-      console.log('Migrating qualified_students table to name format...');
-      const cols = await db.query(`
+    try {
+      const hasNameCol = await db.query(`
         SELECT column_name 
         FROM information_schema.columns 
-        WHERE table_name='qualified_students' AND column_name IN ('firstname', 'lastname')
+        WHERE table_name='qualified_students' AND column_name='name'
       `);
-      if (cols.rows.length > 0) {
-        await db.query(`ALTER TABLE qualified_students ADD COLUMN name TEXT`);
-        await db.query(`UPDATE qualified_students SET name = TRIM(CONCAT(firstname, ' ', lastname))`);
-        await db.query(`ALTER TABLE qualified_students ALTER COLUMN name SET NOT NULL`);
-        await db.query(`ALTER TABLE qualified_students DROP COLUMN firstname`);
-        await db.query(`ALTER TABLE qualified_students DROP COLUMN lastname`);
-        console.log('Migration of qualified_students table completed successfully.');
-      } else {
-        await db.query(`ALTER TABLE qualified_students ADD COLUMN name TEXT NOT NULL`);
+      if (hasNameCol.rows.length === 0) {
+        console.log('Migrating qualified_students table to name format...');
+        const cols = await db.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name='qualified_students' AND column_name IN ('firstname', 'lastname')
+        `);
+        if (cols.rows.length > 0) {
+          await db.query(`ALTER TABLE qualified_students ADD COLUMN name TEXT`);
+          await db.query(`UPDATE qualified_students SET name = TRIM(CONCAT(firstname, ' ', lastname))`);
+          await db.query(`ALTER TABLE qualified_students ALTER COLUMN name SET NOT NULL`);
+          await db.query(`ALTER TABLE qualified_students DROP COLUMN firstname`);
+          await db.query(`ALTER TABLE qualified_students DROP COLUMN lastname`);
+          console.log('Migration of qualified_students table completed successfully.');
+        } else {
+          await db.query(`ALTER TABLE qualified_students ADD COLUMN name TEXT NOT NULL`);
+        }
       }
+    } catch (e) {
+      console.log('Skip qualified_students migration:', e.message);
     }
 
     // 5. Initialize default settings if missing

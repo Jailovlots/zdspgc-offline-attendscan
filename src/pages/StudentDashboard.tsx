@@ -18,6 +18,7 @@ import {
 } from "@/lib/offlineEvents";
 import { useMemo, useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const MONTHS = ["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
 
@@ -82,6 +83,7 @@ const StudentDashboard = () => {
     }
   }, []);
 
+
   useEffect(() => {
     const session = getSession();
     if (!session || session.role !== "student") {
@@ -89,7 +91,7 @@ const StudentDashboard = () => {
       return;
     }
     setUser(session);
-
+    
     loadData();
     const interval = setInterval(loadData, 30000); // Refresh every 30s when online
     return () => clearInterval(interval);
@@ -140,16 +142,6 @@ const StudentDashboard = () => {
     ).token;
   }, [user]);
 
-  if (!user || isLoading) {
-    return (
-      <DashboardLayout role="student">
-        <div className="flex items-center justify-center min-h-[50vh]">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent"></div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout role="student">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -192,19 +184,36 @@ const StudentDashboard = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((s) => (
-            <Card key={s.label} className="shadow-card">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
-                  <s.icon className={`h-5 w-5 ${s.color}`} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{s.value}</p>
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {isLoading ? (
+            // Stats Skeleton
+            [1, 2, 3, 4].map((i) => (
+              <Card key={i} className="shadow-card border-none bg-white/50 animate-pulse">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 skeleton shrink-0" />
+                  <div className="space-y-2">
+                    <div className="h-2 w-16 skeleton" />
+                    <div className="h-4 w-12 skeleton" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            stats.map((s) => (
+              <Card key={s.label} className="shadow-card">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                    <s.icon className={`h-5 w-5 ${s.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {isHistoryLoaded ? s.value : "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{s.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Upcoming Events / Saved Offline Events */}
@@ -214,6 +223,7 @@ const StudentDashboard = () => {
               <Calendar className="h-5 w-5 text-gold" />
               {isOnline ? "Upcoming Events" : "Saved Offline Events"}
             </h2>
+<<<<<<< HEAD
             <Button
               variant="outline"
               size="sm"
@@ -286,8 +296,65 @@ const StudentDashboard = () => {
                         <div className="flex items-center text-xs text-muted-foreground gap-2">
                           <MapPin className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{event.location}</span>
+=======
+            <div className="grid sm:grid-cols-2 gap-4">
+              {isLoading ? (
+                // Events Skeleton
+                [1, 2].map(i => (
+                  <Card key={i} className="shadow-card animate-pulse">
+                     <CardContent className="p-4 flex gap-4">
+                        <div className="h-12 w-12 skeleton shrink-0" />
+                        <div className="space-y-2 w-full">
+                           <div className="h-3 w-1/3 skeleton" />
+                           <div className="h-2 w-1/2 skeleton" />
+                           <div className="h-8 w-full skeleton mt-2" />
                         </div>
+                     </CardContent>
+                  </Card>
+                ))
+              ) : upcomingEvents.length > 0 ? (
+                upcomingEvents.map((event) => (
+                  <Card key={event.id} className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors">
+                    <CardContent className="p-0">
+                      <div className="p-4 space-y-3">
+                        <div className="flex justify-between items-start">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.category === 'course-specific' ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'
+                            }`}>
+                            {event.category === 'course-specific' ? `${event.targetCourses[0]} Special` : 'Open to All'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
+                            }`}>
+                            {event.status}
+                          </span>
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-foreground group-hover:text-gold transition-colors">{event.name}</h3>
+                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{event.description}</p>
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span>{new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>{event.time}</span>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <MapPin className="h-3.5 w-3.5" />
+                            <span className="truncate">{event.location}</span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2"
+                          onClick={() => navigate(`/student/qr?event=${event.id}`)}
+                        >
+                          Generate QR <ArrowRight className="ml-2 h-3 w-3" />
+                        </Button>
                       </div>
+<<<<<<< HEAD
                       <Button
                         size="sm"
                         className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2 font-medium"
@@ -299,6 +366,16 @@ const StudentDashboard = () => {
                   </CardContent>
                 </Card>
               ))}
+=======
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="col-span-full py-8 text-center border-2 border-dashed rounded-xl border-muted">
+                  <p className="text-muted-foreground text-sm">No upcoming events scheduled</p>
+                </div>
+              )}
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
             </div>
           )}
         </div>
@@ -347,6 +424,23 @@ const StudentDashboard = () => {
                 />
               </BarChart>
             </ResponsiveContainer>
+            {!isHistoryLoaded && (
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+                <Button 
+                  onClick={loadAttendanceHistory} 
+                  variant="outline" 
+                  disabled={isHistoryLoading}
+                  className="bg-background shadow-lg border-gold/30 hover:border-gold"
+                >
+                  {isHistoryLoading ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CalendarDays className="h-4 w-4 mr-2 text-gold" />
+                  )}
+                  Load Analytics & Stats
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -366,6 +460,7 @@ const StudentDashboard = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
+<<<<<<< HEAD
                 {history.slice(0, 10).map((row, i) => (
                   <TableRow key={row.timestamp + i}>
                     <TableCell className="font-medium">
@@ -386,13 +481,54 @@ const StudentDashboard = () => {
                             ? "bg-warning/10 text-warning"
                             : "bg-destructive/10 text-destructive"
                         }`}
+=======
+                {isHistoryLoaded ? (
+                  history.slice(0, 10).map((row, i) => (
+                    <TableRow key={row.timestamp + i}>
+                      <TableCell className="font-medium">
+                        {new Date(row.timestamp).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] whitespace-nowrap bg-background">
+                          {row.eventName || "General Attendance"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{row.time}</TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
+                            ? "bg-success/10 text-success"
+                            : row.status === "Late"
+                              ? "bg-warning/10 text-warning"
+                              : "bg-destructive/10 text-destructive"
+                            }`}
+                        >
+                          {row.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-12">
+                      <Button 
+                        onClick={loadAttendanceHistory} 
+                        variant="ghost" 
+                        disabled={isHistoryLoading}
+                        className="text-gold hover:bg-gold/5"
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
                       >
-                        {row.status}
-                      </span>
+                        {isHistoryLoading ? (
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Clock className="h-4 w-4 mr-2" />
+                        )}
+                        Show Attendance Records
+                      </Button>
                     </TableCell>
                   </TableRow>
-                ))}
-                {history.length === 0 && (
+                )}
+                {isHistoryLoaded && history.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                       No recent activity found.

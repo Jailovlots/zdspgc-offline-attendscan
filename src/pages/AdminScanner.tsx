@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, CheckCircle2, XCircle, Clock, Volume2, CalendarDays, Filter, Download } from "lucide-react";
+import { Camera, CheckCircle2, XCircle, Clock, Volume2, CalendarDays, Filter, Download, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,48 @@ const AdminScanner = () => {
   const [events, setEvents] = useState<SchoolEvent[]>([]);
   const [systemSettings, setSystemSettings] = useState({ lateThreshold: "08:30" });
   const [selectedIds, setSelectedIds] = useState<Set<number | string>>(new Set());
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // show UI immediately
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
+
+  // Conceptual helpers for the requested "system" logic
+  const setScreen = (name: string) => console.log(`Screen set to: ${name}`);
+  
+  // STEP 1: Load ONLY important data on start (Batch Init)
+  const fetchData = async () => {
+    try {
+      const initData = await getDashboardInitData(undefined, 'admin');
+      
+      if (initData) {
+        if (initData.settings) setSystemSettings(initData.settings);
+        if (initData.events) setEvents(initData.events);
+        if (initData.students) setAllStudents(initData.students);
+      }
+    } catch (err: any) {
+      console.error("Scanner init error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // STEP 2: Load Attendance records later when user clicks (History/Logs)
+  const loadScanHistory = async () => {
+    if (isHistoryLoaded) return;
+    setIsHistoryLoading(true);
+    try {
+      const savedRecords = await getAttendanceRecords();
+      setScannedRecords(savedRecords);
+      setScanCount(savedRecords.length);
+      if (savedRecords.length > 0) setLastScan(savedRecords[0]);
+      setIsHistoryLoaded(true);
+      toast.success("Scanner history synchronized");
+    } catch (err) {
+      console.error("Failed to sync scanner history:", err);
+      toast.error("Failed to sync history");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
   const [isDeleting, setIsDeleting] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearMode, setClearMode] = useState<'selected' | 'all'>('all');
@@ -358,32 +399,51 @@ const AdminScanner = () => {
   );
   
   const handleExport = () => {
-    if (scannedRecords.length === 0) {
-      toast.error("No records to export");
+    const hasActiveFilter = selectedEventFilter !== "all";
+    const recordsToExport = hasActiveFilter ? filteredRecords : scannedRecords;
+    
+    if (recordsToExport.length === 0) {
+      toast.error(hasActiveFilter ? "No records for this event to export" : "No records to export");
       return;
     }
 
+    const eventObj = hasActiveFilter ? events.find(e => e.id === selectedEventFilter) : null;
+    const eventLabel = eventObj ? eventObj.name : "All Events";
+
     const sections = [
       {
-        title: `AttendWise Scanner Attendance Export`,
+        title: `AttendWise ${eventLabel} Attendance Export`,
         rows: [
           ["Export Generated", new Date().toLocaleString()],
-          ["Total Scans in this Session", scannedRecords.length],
+          ["Total Scans", recordsToExport.length],
+          ...(eventObj ? [
+            ["Event Name", eventObj.name],
+            ["Event Date", eventObj.date],
+            ["Event Location", eventObj.location]
+          ] : [])
         ]
       },
       {
-        title: "Scanned Records Log",
+        title: "Attendance Records",
         headers: ["Student ID", "Full Name", "Course", "Section", "Gender", "Event", "Status", "Time"],
-        rows: scannedRecords.map(s => [
-          s.studentId || s.id, s.name, s.course, s.section, s.gender, s.eventName, s.status, s.time
-        ])
+        rows: [...recordsToExport]
+          .sort((a, b) => {
+            const courseComp = (a.course || "").localeCompare(b.course || "");
+            if (courseComp !== 0) return courseComp;
+            const sectionComp = (a.section || "").localeCompare(b.section || "");
+            if (sectionComp !== 0) return sectionComp;
+            return a.name.localeCompare(b.name);
+          })
+          .map(s => [
+            s.studentId || s.id, s.name, s.course, s.section, s.gender, s.eventName, s.status, s.time
+          ])
       }
     ];
 
     const dateStr = new Date().toLocaleDateString('en-CA');
-    const fileName = `Scanner_Attendance_${dateStr}.csv`;
+    const fileName = `Attendance_${eventLabel.replace(/\s+/g, '_')}_${dateStr}.csv`;
     exportToCsv(fileName, sections);
-    toast.success("Attendance records exported successfully");
+    toast.success(`${eventLabel} records exported successfully`);
   };
 
 
@@ -423,16 +483,16 @@ const AdminScanner = () => {
           {/* Stats & Last Scan */}
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-3">
-              <Card className="shadow-card">
+              <Card className="shadow-card overflow-hidden relative">
                 <CardContent className="p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">{scanCount}</p>
+                  <p className="text-2xl font-bold text-foreground">{isHistoryLoaded || scanCount > 0 ? scanCount : "—"}</p>
                   <p className="text-xs text-muted-foreground">Total Scans</p>
                 </CardContent>
               </Card>
               <Card className="shadow-card">
                 <CardContent className="p-4 text-center">
                   <p className="text-2xl font-bold text-success">
-                    {scannedRecords.filter((r) => r.status === "Present").length}
+                    {isHistoryLoaded || scanCount > 0 ? scannedRecords.filter((r) => r.status === "Present").length : "—"}
                   </p>
                   <p className="text-xs text-muted-foreground">Present</p>
                 </CardContent>
@@ -440,7 +500,7 @@ const AdminScanner = () => {
               <Card className="shadow-card">
                 <CardContent className="p-4 text-center">
                   <p className="text-2xl font-bold text-warning">
-                    {scannedRecords.filter((r) => r.status === "Late").length}
+                    {isHistoryLoaded || scanCount > 0 ? scannedRecords.filter((r) => r.status === "Late").length : "—"}
                   </p>
                   <p className="text-xs text-muted-foreground">Late</p>
                 </CardContent>
@@ -624,61 +684,80 @@ const AdminScanner = () => {
 
 
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]">
-                      <Checkbox 
-                        checked={filteredRecords.length > 0 && selectedIds.size === filteredRecords.length}
-                        onCheckedChange={() => toggleSelectAll()}
-                      />
-                    </TableHead>
-                    <TableHead className="w-[60px]">No.</TableHead>
-                    <TableHead>Student ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Course</TableHead>
-                    <TableHead>Section</TableHead>
-                    <TableHead>Event</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRecords.map((row, i) => (
-                    <TableRow key={`${row.studentId || row.id}-${row.eventId}-${row.timestamp}-${i}`}>
-                      <TableCell>
+              {isHistoryLoaded || scannedRecords.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40px]">
                         <Checkbox 
-                          checked={selectedIds.has(row.id as string | number)}
-                          onCheckedChange={() => toggleSelect(row.id as string | number)}
+                          checked={filteredRecords.length > 0 && selectedIds.size === filteredRecords.length}
+                          onCheckedChange={() => toggleSelectAll()}
                         />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground font-medium">
-                        {filteredRecords.length - i}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
-                      <TableCell className="font-medium">{row.name}</TableCell>
-                      <TableCell>{row.course}</TableCell>
-                      <TableCell>{row.section}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px] bg-background">
-                          {row.eventName || "General Attendance"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{row.time}</TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
-                            ? "bg-success/10 text-success"
-                            : "bg-warning/10 text-warning"
-                            }`}
-                        >
-                          {row.status}
-                        </span>
-                      </TableCell>
+                      </TableHead>
+                      <TableHead className="w-[60px]">No.</TableHead>
+                      <TableHead>Student ID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Course</TableHead>
+                      <TableHead>Section</TableHead>
+                      <TableHead>Event</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRecords.map((row, i) => (
+                      <TableRow key={`${row.studentId || row.id}-${row.eventId}-${row.timestamp}-${i}`}>
+                        <TableCell>
+                          <Checkbox 
+                            checked={selectedIds.has(row.id as string | number)}
+                            onCheckedChange={() => toggleSelect(row.id as string | number)}
+                          />
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-medium">
+                          {filteredRecords.length - i}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
+                        <TableCell className="font-medium">{row.name}</TableCell>
+                        <TableCell>{row.course}</TableCell>
+                        <TableCell>{row.section}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px] bg-background">
+                            {row.eventName || "General Attendance"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{row.time}</TableCell>
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${row.status === "Present"
+                              ? "bg-success/10 text-success"
+                              : "bg-warning/10 text-warning"
+                              }`}
+                          >
+                            {row.status}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="py-12 text-center">
+                  <p className="text-sm text-muted-foreground mb-4">Scan history not loaded for this session.</p>
+                  <Button 
+                    onClick={loadScanHistory} 
+                    variant="outline" 
+                    disabled={isHistoryLoading}
+                    className="border-gold/30 text-gold hover:bg-gold/5"
+                  >
+                    {isHistoryLoading ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Sync Existing Server Records
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

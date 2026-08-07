@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import redisClient from './redis.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import compression from 'compression';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,9 +15,20 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3002;
 
+app.use(compression());
 app.use(cors());
+<<<<<<< HEAD
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+=======
+app.use(express.json());
+
+// API Root Status Route
+// Moved to /api/status so it doesn't break React frontend loading on '/'
+app.get("/api/status", (req, res) => {
+  res.send("API is running");
+});
+>>>>>>> 0e7c3ed7e94d9204619678e7e811ed7ed5db56aa
 // Serve static frontend files with CDN/Browser caching enabled
 app.use(express.static(path.join(__dirname, '../dist'), {
   setHeaders: (res, filePath) => {
@@ -661,7 +673,71 @@ app.post('/api/attendance', async (req, res) => {
     res.status(400).json({ ok: false, error: err.message });
   }
 });
+app.post('/api/attendance/bulk', async (req, res) => {
+  const records = req.body;
+  if (!Array.isArray(records)) {
+    return res.status(400).json({ error: 'Expected an array of records' });
+  }
 
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const inserted = [];
+    for (const r of records) {
+      // Since attendance now has a unique constraint, we can safely ignore duplicates
+      const result = await client.query(`
+        INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (studentid, eventid) DO NOTHING
+        RETURNING *
+      `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
+      if (result.rows.length > 0) {
+        inserted.push(mapAttendance(result.rows[0]));
+      }
+    }
+    await client.query('COMMIT');
+    res.json(inserted);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/attendance/bulk', async (req, res) => {
+  const records = req.body;
+
+  if (!Array.isArray(records)) {
+    return res.status(400).send("Records must be an array");
+  }
+
+  try {
+    for (const record of records) {
+      await db.query(`
+        INSERT INTO attendance(studentid, name, course, section, gender, time, status, eventid, eventname, timestamp) 
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (studentid, eventid) DO NOTHING
+      `,
+        [
+          record.studentId, 
+          record.name || "Offline Scan", 
+          record.course || "N/A", 
+          record.section || "N/A", 
+          record.gender || "N/A", 
+          new Date(record.time).toLocaleTimeString() || "N/A", 
+          record.status || "Present", 
+          record.session || record.eventId || "EVT-OFFLINE", 
+          record.eventName || "Offline Session", 
+          record.time
+        ]
+      );
+    }
+    res.send("Bulk insert success");
+  } catch (err) {
+    res.status(500).send("Bulk insert failed: " + err.message);
+  }
+});
 
 app.delete('/api/attendance/clear', async (req, res) => {
   try {
@@ -683,6 +759,68 @@ app.delete('/api/attendance/bulk', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Combined Initialization Route (API Batching) ---
+app.get('/api/init-data', async (req, res) => {
+  const { studentId, role } = req.query;
+  
+  try {
+    const promises = [
+      db.query('SELECT * FROM settings WHERE id = 1'),
+      db.query('SELECT * FROM events')
+    ];
+
+    // For students, fetch their profile and recent attendance
+    if (role === 'student' && studentId) {
+      promises.push(db.query('SELECT * FROM users WHERE studentid = $1', [studentId]));
+      promises.push(db.query('SELECT * FROM attendance WHERE studentid = $1 ORDER BY timestamp DESC LIMIT 50', [studentId]));
+    } 
+    // For admins, fetch all students summary and sections
+    else if (role === 'admin') {
+      promises.push(db.query('SELECT * FROM users WHERE role = $1', ['student']));
+      promises.push(db.query('SELECT * FROM sections'));
+      promises.push(db.query('SELECT name FROM courses'));
+    }
+
+    const results = await Promise.all(promises);
+    
+    const settings = results[0].rows.length > 0 ? mapSettings(results[0].rows[0]) : null;
+    const events = results[1].rows.map(e => ({
+      ...e,
+      targetCourses: JSON.parse(e.targetcourses || e.targetCourses || '[]')
+    }));
+
+    const responseData = {
+      settings,
+      events,
+      timestamp: Date.now()
+    };
+
+    if (role === 'student' && results[2]) {
+      responseData.profile = results[2].rows.length > 0 ? mapUser(results[2].rows[0]) : null;
+      responseData.attendance = results[3] ? results[3].rows.map(mapAttendance) : [];
+    } else if (role === 'admin' && results[2]) {
+      responseData.students = results[2].rows.map(mapUser);
+      
+      // Process sections
+      const sectionsResult = results[3];
+      const coursesResult = results[4];
+      const groupedSections = {};
+      coursesResult.rows.forEach(c => { groupedSections[c.name] = {}; });
+      sectionsResult.rows.forEach(s => {
+        if (!groupedSections[s.course]) groupedSections[s.course] = {};
+        if (!groupedSections[s.course][s.year]) groupedSections[s.course][s.year] = [];
+        groupedSections[s.course][s.year].push(s.section);
+      });
+      responseData.sections = groupedSections;
+    }
+
+    res.json(responseData);
+  } catch (err) {
+    console.error("Init data fetch error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 

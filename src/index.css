@@ -118,4 +118,16 @@
   .shadow-elevated {
     box-shadow: var(--shadow-elevated);
   }
+  .animate-skeleton {
+    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
+}
+
+.skeleton {
+  @apply bg-muted animate-skeleton rounded-md;
 }
